@@ -1,0 +1,11 @@
+.env
+.git
+.github
+.vscode
+.idea
+*.md
+bin/
+tmp/
+test-results/
+coverage.out
+.air.toml

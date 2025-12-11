@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go*)",
+      "Bash(make*)",
+      "Bash(docker*)",
+      "Bash(git*)",
+      "Bash(gh*)",
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep"
+    ],
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(*--force*push*main*)"
+    ]
+  }
+}
