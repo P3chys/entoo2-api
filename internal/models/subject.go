@@ -12,6 +12,7 @@ type Subject struct {
 	SemesterID    uuid.UUID `gorm:"type:uuid;not null" json:"semester_id"`
 	NameCS        string    `gorm:"size:200;not null" json:"name_cs"`
 	NameEN        string    `gorm:"size:200;not null" json:"name_en"`
+	Code          string    `gorm:"size:10;uniqueIndex" json:"code"`
 	DescriptionCS string    `gorm:"type:text" json:"description_cs"`
 	DescriptionEN string    `gorm:"type:text" json:"description_en"`
 	Credits       int       `gorm:"default:0" json:"credits"`

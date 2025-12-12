@@ -10,22 +10,32 @@ import (
 )
 
 // Request/Response types
+type TeacherRequest struct {
+	Name    string `json:"name" binding:"required"`
+	TopicCS string `json:"topic_cs"`
+	TopicEN string `json:"topic_en"`
+}
+
 type CreateSubjectRequest struct {
-	SemesterID    string `json:"semester_id" binding:"required"`
-	NameCS        string `json:"name_cs" binding:"required"`
-	NameEN        string `json:"name_en" binding:"required"`
-	DescriptionCS string `json:"description_cs"`
-	DescriptionEN string `json:"description_en"`
-	Credits       int    `json:"credits"`
+	SemesterID    string           `json:"semester_id" binding:"required"`
+	NameCS        string           `json:"name_cs" binding:"required"`
+	NameEN        string           `json:"name_en" binding:"required"`
+	Code          string           `json:"code" binding:"required,min=3,max=6"`
+	DescriptionCS string           `json:"description_cs"`
+	DescriptionEN string           `json:"description_en"`
+	Credits       int              `json:"credits"`
+	Teachers      []TeacherRequest `json:"teachers"`
 }
 
 type UpdateSubjectRequest struct {
-	SemesterID    *string `json:"semester_id"`
-	NameCS        *string `json:"name_cs"`
-	NameEN        *string `json:"name_en"`
-	DescriptionCS *string `json:"description_cs"`
-	DescriptionEN *string `json:"description_en"`
-	Credits       *int    `json:"credits"`
+	SemesterID    *string           `json:"semester_id"`
+	NameCS        *string           `json:"name_cs"`
+	NameEN        *string           `json:"name_en"`
+	Code          *string           `json:"code"`
+	DescriptionCS *string           `json:"description_cs"`
+	DescriptionEN *string           `json:"description_en"`
+	Credits       *int              `json:"credits"`
+	Teachers      *[]TeacherRequest `json:"teachers"`
 }
 
 // ListSubjects returns all subjects with semester info
@@ -147,9 +157,21 @@ func CreateSubject(db *gorm.DB) gin.HandlerFunc {
 			SemesterID:    semesterID,
 			NameCS:        req.NameCS,
 			NameEN:        req.NameEN,
+			Code:          req.Code,
 			DescriptionCS: req.DescriptionCS,
 			DescriptionEN: req.DescriptionEN,
 			Credits:       req.Credits,
+		}
+
+		if len(req.Teachers) > 0 {
+			subject.Teachers = make([]models.SubjectTeacher, len(req.Teachers))
+			for i, t := range req.Teachers {
+				subject.Teachers[i] = models.SubjectTeacher{
+					TeacherName: t.Name,
+					TopicCS:     t.TopicCS,
+					TopicEN:     t.TopicEN,
+				}
+			}
 		}
 
 		if err := db.Create(&subject).Error; err != nil {
@@ -243,11 +265,39 @@ func UpdateSubject(db *gorm.DB) gin.HandlerFunc {
 		if req.DescriptionEN != nil {
 			subject.DescriptionEN = *req.DescriptionEN
 		}
+		if req.Code != nil {
+			subject.Code = *req.Code
+		}
 		if req.Credits != nil {
 			subject.Credits = *req.Credits
 		}
 
-		if err := db.Save(&subject).Error; err != nil {
+		err = db.Transaction(func(tx *gorm.DB) error {
+			if req.Teachers != nil {
+				// Delete existing teachers
+				if err := tx.Delete(&models.SubjectTeacher{}, "subject_id = ?", subject.ID).Error; err != nil {
+					return err
+				}
+				// Add new teachers
+				if len(*req.Teachers) > 0 {
+					newTeachers := make([]models.SubjectTeacher, len(*req.Teachers))
+					for i, t := range *req.Teachers {
+						newTeachers[i] = models.SubjectTeacher{
+							SubjectID:   subject.ID,
+							TeacherName: t.Name,
+							TopicCS:     t.TopicCS,
+							TopicEN:     t.TopicEN,
+						}
+					}
+					if err := tx.Create(&newTeachers).Error; err != nil {
+						return err
+					}
+				}
+			}
+			return tx.Save(&subject).Error
+		})
+
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
 				"error": gin.H{
