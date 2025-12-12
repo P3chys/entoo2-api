@@ -36,6 +36,11 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
+	// Seed admin user if none exists
+	if err := database.SeedAdmin(db); err != nil {
+		log.Printf("Warning: Failed to seed admin user: %v", err)
+	}
+
 	// Setup router
 	r := router.Setup(db, cfg)
 
