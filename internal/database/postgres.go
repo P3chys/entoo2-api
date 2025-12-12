@@ -47,24 +47,24 @@ func RunMigrations(db *gorm.DB) error {
 	}
 
 	type Semester struct {
-		ID          string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-		Name        string    `gorm:"not null"`
-		Description string
-		StartDate   string
-		EndDate     string
-		CreatedAt   time.Time
-		UpdatedAt   time.Time
+		ID         string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+		NameCS     string    `gorm:"column:name_cs;size:100;not null"`
+		NameEN     string    `gorm:"column:name_en;size:100;not null"`
+		OrderIndex int       `gorm:"column:order_index;default:0"`
+		CreatedAt  time.Time
+		UpdatedAt  time.Time
 	}
 
 	type Subject struct {
-		ID          string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-		SemesterID  string    `gorm:"type:uuid;not null"`
-		Name        string    `gorm:"not null"`
-		Code        string    `gorm:"uniqueIndex"`
-		Description string
-		Credits     int
-		CreatedAt   time.Time
-		UpdatedAt   time.Time
+		ID            string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+		SemesterID    string    `gorm:"type:uuid;not null"`
+		NameCS        string    `gorm:"column:name_cs;size:200;not null"`
+		NameEN        string    `gorm:"column:name_en;size:200;not null"`
+		DescriptionCS string    `gorm:"column:description_cs;type:text"`
+		DescriptionEN string    `gorm:"column:description_en;type:text"`
+		Credits       int       `gorm:"default:0"`
+		CreatedAt     time.Time
+		UpdatedAt     time.Time
 	}
 
 	type Document struct {
