@@ -1,15 +1,28 @@
 package router
 
 import (
+	"log"
+
 	"github.com/P3chys/entoo2-api/internal/config"
 	"github.com/P3chys/entoo2-api/internal/handlers"
 	"github.com/P3chys/entoo2-api/internal/middleware"
+	"github.com/P3chys/entoo2-api/internal/services"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
+	// Initialize Services
+	storageService, err := services.NewStorageService(cfg)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize storage service: %v", err)
+	}
+
+	tikaService := services.NewTextExtractionService(cfg)
+	searchService := services.NewSearchService(cfg)
+	activityService := services.NewActivityService(db)
+
 	// Set Gin mode
 	gin.SetMode(cfg.GinMode)
 
@@ -20,7 +33,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		AllowOrigins:     cfg.CORSOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept-Language"},
-		ExposeHeaders:    []string{"Content-Length"},
+		ExposeHeaders:    []string{"Content-Length", "Content-Disposition"},
 		AllowCredentials: true,
 	}))
 
@@ -54,11 +67,17 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			protected.GET("/subjects/:id", handlers.GetSubject(db))
 
 			// Documents
+			protected.POST("/subjects/:id/documents", handlers.UploadDocument(db, cfg, storageService, tikaService, searchService, activityService))
 			protected.GET("/subjects/:id/documents", handlers.ListDocuments(db))
-			protected.GET("/documents/:id/download", handlers.DownloadDocument(db, cfg))
+			protected.GET("/documents/:id", handlers.GetDocument(db))
+			protected.GET("/documents/:id/download", handlers.DownloadDocument(db, storageService, activityService))
+			protected.DELETE("/documents/:id", handlers.DeleteDocument(db, storageService, searchService, activityService))
+
+			// Activities
+			protected.GET("/activities/recent", handlers.GetRecentActivities(activityService))
 
 			// Search
-			protected.GET("/search", handlers.Search(db, cfg))
+			protected.GET("/search", handlers.Search(searchService))
 		}
 
 		// Admin routes

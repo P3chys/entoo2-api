@@ -78,20 +78,30 @@ func RunMigrations(db *gorm.DB) error {
 	}
 
 	type Document struct {
-		ID          string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-		SubjectID   string    `gorm:"type:uuid;not null"`
-		UserID      string    `gorm:"type:uuid;not null"`
-		Name        string    `gorm:"not null"`
-		Description string
-		FilePath    string    `gorm:"not null"`
-		FileSize    int64
-		MimeType    string
-		CreatedAt   time.Time
-		UpdatedAt   time.Time
+		ID           string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+		SubjectID    string    `gorm:"type:uuid;not null;index"`
+		UploadedBy   string    `gorm:"type:uuid;not null;index"`
+		Filename     string    `gorm:"size:255;not null"`
+		OriginalName string    `gorm:"size:255;not null"`
+		FileSize     int64     `gorm:"not null"`
+		MimeType     string    `gorm:"size:100;not null"`
+		MinIOPath    string    `gorm:"size:500;not null"`
+		ContentText  string    `gorm:"type:text"`
+		CreatedAt    time.Time `gorm:"index"`
+	}
+
+	type Activity struct {
+		ID           string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+		UserID       string    `gorm:"type:uuid;not null;index"`
+		ActivityType string    `gorm:"type:varchar(50);not null;index"`
+		SubjectID    *string   `gorm:"type:uuid;index"`
+		DocumentID   *string   `gorm:"type:uuid;index"`
+		Metadata     string    `gorm:"type:jsonb"`
+		CreatedAt    time.Time `gorm:"index"`
 	}
 
 	// Auto-migrate all models
-	err := db.AutoMigrate(&User{}, &Semester{}, &Subject{}, &SubjectTeacher{}, &Document{})
+	err := db.AutoMigrate(&User{}, &Semester{}, &Subject{}, &SubjectTeacher{}, &Document{}, &Activity{})
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}

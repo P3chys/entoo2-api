@@ -1,0 +1,71 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 542B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/golang:1.22-alpine
+#2 DONE 0.1s
+
+#3 [internal] load metadata for docker.io/library/alpine:latest
+#3 ...
+
+#4 [auth] library/alpine:pull token for registry-1.docker.io
+#4 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/alpine:latest
+#3 DONE 1.2s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 124B done
+#5 DONE 0.0s
+
+#6 [stage-1 1/4] FROM docker.io/library/alpine:latest@sha256:51183f2cfa6320055da30872f211093f9ff1d3cf06f39a0bdb212314c5dc7375
+#6 resolve docker.io/library/alpine:latest@sha256:51183f2cfa6320055da30872f211093f9ff1d3cf06f39a0bdb212314c5dc7375 0.0s done
+#6 DONE 0.0s
+
+#7 [builder 1/7] FROM docker.io/library/golang:1.22-alpine@sha256:1699c10032ca2582ec89a24a1312d986a3f094aed3d5c1147b19880afe40e052
+#7 resolve docker.io/library/golang:1.22-alpine@sha256:1699c10032ca2582ec89a24a1312d986a3f094aed3d5c1147b19880afe40e052 0.0s done
+#7 DONE 0.1s
+
+#8 [internal] load build context
+#8 transferring context: 2.50kB 0.0s done
+#8 DONE 0.0s
+
+#9 [builder 2/7] WORKDIR /app
+#9 CACHED
+
+#10 [builder 3/7] RUN apk add --no-cache git
+#10 CACHED
+
+#11 [builder 4/7] COPY go.mod go.sum ./
+#11 CACHED
+
+#12 [builder 5/7] RUN go mod download
+#12 CACHED
+
+#13 [builder 6/7] COPY . .
+#13 DONE 0.0s
+
+#14 [builder 7/7] RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main cmd/server/main.go
+#14 20.91 # github.com/P3chys/entoo2-api/internal/handlers
+#14 20.91 internal/handlers/documents.go:159:3: userID declared and not used
+#14 20.91 internal/handlers/documents.go:221:61: undefined: models.RoleTeacher
+#14 ERROR: process "/bin/sh -c CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main cmd/server/main.go" did not complete successfully: exit code: 1
+------
+ > [builder 7/7] RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main cmd/server/main.go:
+20.91 # github.com/P3chys/entoo2-api/internal/handlers
+20.91 internal/handlers/documents.go:159:3: userID declared and not used
+20.91 internal/handlers/documents.go:221:61: undefined: models.RoleTeacher
+------
+Dockerfile:18
+--------------------
+  16 |     
+  17 |     # Build
+  18 | >>> RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main cmd/server/main.go
+  19 |     
+  20 |     # Runtime stage
+--------------------
+ERROR: failed to build: failed to solve: process "/bin/sh -c CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main cmd/server/main.go" did not complete successfully: exit code: 1
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/7vlqqe9nps7skkyz73he88279
