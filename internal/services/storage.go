@@ -50,6 +50,12 @@ func (s *StorageService) UploadFile(file multipart.File, filename string, size i
 	return err
 }
 
+func (s *StorageService) UploadFileFromPath(ctx context.Context, file interface{}, filename string, size int64, contentType string) (minio.UploadInfo, error) {
+	return s.client.PutObject(ctx, s.bucket, filename, file.(interface{ Read([]byte) (int, error) }), size, minio.PutObjectOptions{
+		ContentType: contentType,
+	})
+}
+
 func (s *StorageService) DownloadFile(filename string) (*minio.Object, error) {
 	ctx := context.Background()
 	return s.client.GetObject(ctx, s.bucket, filename, minio.GetObjectOptions{})
