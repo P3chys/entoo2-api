@@ -70,6 +70,7 @@ func RunMigrations(db *gorm.DB) error {
 		SubjectID    string    `gorm:"type:uuid;not null;index"`
 		UploadedBy   string    `gorm:"type:uuid;not null;index"`
 		AnswerID     *string   `gorm:"type:uuid;index"`
+		Category     string    `gorm:"size:20;default:'other'"`
 		Filename     string    `gorm:"size:255;not null"`
 		OriginalName string    `gorm:"size:255;not null"`
 		FileSize     int64     `gorm:"not null"`

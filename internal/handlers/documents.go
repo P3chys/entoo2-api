@@ -48,6 +48,16 @@ func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageSe
 		}
 		defer file.Close()
 
+		// Get and validate category
+		category := c.Request.FormValue("category")
+		if category == "" {
+			category = "other"
+		}
+		if category != "lecture" && category != "seminar" && category != "other" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid category. Must be lecture, seminar, or other"})
+			return
+		}
+
 		// Validate file size
 		if header.Size > MaxFileSize {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "File exceeds 50MB limit"})
@@ -96,6 +106,7 @@ func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageSe
 			ID:           docID,
 			SubjectID:    subjectUUID,
 			UploadedBy:   userUUID,
+			Category:     category,
 			Filename:     newFilename,
 			OriginalName: header.Filename,
 			FileSize:     header.Size,
