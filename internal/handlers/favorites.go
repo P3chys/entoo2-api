@@ -126,31 +126,25 @@ func ListFavorites(db *gorm.DB) gin.HandlerFunc {
 
 		// Fetch favorite subjects
 		// We explicitly want ONLY favorites, so we INNER JOIN
-		err := db.Joins("JOIN user_favorite_subjects ufs ON subjects.id = ufs.subject_id AND ufs.user_id = ?", userIDStr).
+		// Use Select to compute is_favorite in SQL to avoid GORM trying to select it as a physical column
+		err := db.Select("subjects.*, true as is_favorite").
+			Joins("JOIN user_favorite_subjects ufs ON subjects.id = ufs.subject_id AND ufs.user_id = ?", userIDStr).
 			Preload("Semester").
 			Find(&subjects).Error
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch favorite subjects"})
 			return
 		}
-		
-		// Set IsFavorite = true for all of them manually since we know they are favorites
-		for i := range subjects {
-			subjects[i].IsFavorite = true
-		}
 
 		// Fetch favorite documents
-		err = db.Joins("JOIN user_favorite_documents ufd ON documents.id = ufd.document_id AND ufd.user_id = ?", userIDStr).
+		// Use Select to compute is_favorite in SQL to avoid GORM trying to select it as a physical column
+		err = db.Select("documents.*, true as is_favorite").
+			Joins("JOIN user_favorite_documents ufd ON documents.id = ufd.document_id AND ufd.user_id = ?", userIDStr).
 			Preload("Uploader").Preload("Subject").
 			Find(&documents).Error
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch favorite documents"})
 			return
-		}
-
-		// Set IsFavorite = true for all
-		for i := range documents {
-			documents[i].IsFavorite = true
 		}
 
 		c.JSON(http.StatusOK, gin.H{
