@@ -23,6 +23,10 @@ type User struct {
 	Language     string    `gorm:"type:varchar(2);default:'cs'" json:"language"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+
+	// Favorites
+	FavoriteSubjects  []Subject  `gorm:"many2many:user_favorite_subjects;" json:"favorite_subjects,omitempty"`
+	FavoriteDocuments []Document `gorm:"many2many:user_favorite_documents;" json:"favorite_documents,omitempty"`
 }
 
 func (User) TableName() string {

@@ -34,18 +34,6 @@ func Connect(dsn string) (*gorm.DB, error) {
 func RunMigrations(db *gorm.DB) error {
 	log.Println("Running migrations...")
 
-	// Import models here to avoid circular dependencies
-	type User struct {
-		ID           string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-		Email        string    `gorm:"uniqueIndex;not null"`
-		PasswordHash string    `gorm:"not null"`
-		Role         string    `gorm:"type:varchar(20);default:'student'"`
-		DisplayName  string    `gorm:"size:100"`
-		Language     string    `gorm:"type:varchar(2);default:'cs'"`
-		CreatedAt    time.Time
-		UpdatedAt    time.Time
-	}
-
 	type Semester struct {
 		ID         string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
 		NameCS     string    `gorm:"column:name_cs;size:100;not null"`
@@ -81,6 +69,7 @@ func RunMigrations(db *gorm.DB) error {
 		ID           string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
 		SubjectID    string    `gorm:"type:uuid;not null;index"`
 		UploadedBy   string    `gorm:"type:uuid;not null;index"`
+		AnswerID     *string   `gorm:"type:uuid;index"`
 		Filename     string    `gorm:"size:255;not null"`
 		OriginalName string    `gorm:"size:255;not null"`
 		FileSize     int64     `gorm:"not null"`
@@ -88,6 +77,19 @@ func RunMigrations(db *gorm.DB) error {
 		MinIOPath    string    `gorm:"size:500;not null"`
 		ContentText  string    `gorm:"type:text"`
 		CreatedAt    time.Time `gorm:"index"`
+	}
+
+	type User struct {
+		ID           string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+		Email        string    `gorm:"uniqueIndex;not null"`
+		PasswordHash string    `gorm:"not null"`
+		Role         string    `gorm:"type:varchar(20);default:'student'"`
+		DisplayName  string    `gorm:"size:100"`
+		Language     string    `gorm:"type:varchar(2);default:'cs'"`
+		CreatedAt    time.Time
+		UpdatedAt    time.Time
+		FavoriteSubjects  []Subject  `gorm:"many2many:user_favorite_subjects;"`
+		FavoriteDocuments []Document `gorm:"many2many:user_favorite_documents;"`
 	}
 
 	type Activity struct {
@@ -100,8 +102,38 @@ func RunMigrations(db *gorm.DB) error {
 		CreatedAt    time.Time `gorm:"index"`
 	}
 
+	type Comment struct {
+		ID          string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+		SubjectID   string    `gorm:"type:uuid;not null"`
+		UserID      string    `gorm:"type:uuid;not null"`
+		Content     string    `gorm:"type:text;not null"`
+		IsAnonymous bool      `gorm:"default:false"`
+		CreatedAt   time.Time
+		UpdatedAt   time.Time
+	}
+
+	type Question struct {
+		ID          string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+		SubjectID   string    `gorm:"type:uuid;not null;index"`
+		UserID      string    `gorm:"type:uuid;not null;index"`
+		Content     string    `gorm:"type:text;not null"`
+		IsAnonymous bool      `gorm:"default:false"`
+		CreatedAt   time.Time
+		UpdatedAt   time.Time
+	}
+
+	type Answer struct {
+		ID         string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+		QuestionID string    `gorm:"type:uuid;not null;index"`
+		UserID     string    `gorm:"type:uuid;not null;index"`
+		Content    string    `gorm:"type:text;not null"`
+		DocumentID *string   `gorm:"type:uuid;index"`
+		CreatedAt  time.Time
+		UpdatedAt  time.Time
+	}
+
 	// Auto-migrate all models
-	err := db.AutoMigrate(&User{}, &Semester{}, &Subject{}, &SubjectTeacher{}, &Document{}, &Activity{})
+	err := db.AutoMigrate(&User{}, &Semester{}, &Subject{}, &SubjectTeacher{}, &Document{}, &Activity{}, &Comment{}, &Question{}, &Answer{})
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}

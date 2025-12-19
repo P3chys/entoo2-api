@@ -23,6 +23,11 @@ type Subject struct {
 	Semester Semester        `gorm:"foreignKey:SemesterID" json:"semester,omitempty"`
 	Teachers []SubjectTeacher `gorm:"foreignKey:SubjectID" json:"teachers,omitempty"`
 	Documents []Document      `gorm:"foreignKey:SubjectID" json:"documents,omitempty"`
+	Comments  []Comment       `gorm:"foreignKey:SubjectID" json:"comments,omitempty"`
+	Questions []Question      `gorm:"foreignKey:SubjectID" json:"questions,omitempty"`
+
+	// Computed
+	IsFavorite bool `gorm:"->" json:"is_favorite"`
 }
 
 func (Subject) TableName() string {

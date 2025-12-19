@@ -41,14 +41,27 @@ type UpdateSubjectRequest struct {
 // ListSubjects returns all subjects with semester info
 func ListSubjects(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userIDStr := c.GetString("user_id")
+		// We assume middleware ensures user_id exists, but parsing might be needed
+		// The middleware sets "user_id" from claims. If it's a string in JWT, safe.
+		
 		var subjects []models.Subject
 
-		query := db.Preload("Semester")
+		// Join with favorites to get status and sort
+		// LEFT JOIN user_favorite_subjects on subject.id = ... AND user_id = ...
+		// Order by (user_favorite_subjects.user_id IS NOT NULL) DESC
+		
+		query := db.Preload("Semester").
+			Select("subjects.*, (CASE WHEN ufs.user_id IS NOT NULL THEN true ELSE false END) as is_favorite").
+			Joins("LEFT JOIN user_favorite_subjects ufs ON subjects.id = ufs.subject_id AND ufs.user_id = ?", userIDStr)
 
 		// Optional filter by semester
 		if semesterID := c.Query("semester_id"); semesterID != "" {
-			query = query.Where("semester_id = ?", semesterID)
+			query = query.Where("subjects.semester_id = ?", semesterID)
 		}
+
+		// Sort: Favorites first, then by code
+		query = query.Order("is_favorite DESC, subjects.code ASC")
 
 		if err := query.Find(&subjects).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{

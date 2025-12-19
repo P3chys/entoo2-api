@@ -128,11 +128,22 @@ func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageSe
 func ListDocuments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		subjectID := c.Param("id")
+		userIDStr := c.GetString("user_id")
 		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 		offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 
 		var documents []models.Document
-		if err := db.Preload("Uploader").Where("subject_id = ?", subjectID).Limit(limit).Offset(offset).Order("created_at desc").Find(&documents).Error; err != nil {
+		
+		// Join with favorites to get status and sort
+		// Order by (user_favorite_documents.user_id IS NOT NULL) DESC
+		query := db.Preload("Uploader").
+			Select("documents.*, (CASE WHEN ufd.user_id IS NOT NULL THEN true ELSE false END) as is_favorite").
+			Joins("LEFT JOIN user_favorite_documents ufd ON documents.id = ufd.document_id AND ufd.user_id = ?", userIDStr).
+			Where("documents.subject_id = ?", subjectID)
+
+		query = query.Limit(limit).Offset(offset).Order("is_favorite DESC, documents.created_at desc")
+
+		if err := query.Find(&documents).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to fetch documents"})
 			return
 		}

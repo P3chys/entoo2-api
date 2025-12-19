@@ -65,16 +65,32 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			// Subjects
 			protected.GET("/subjects", handlers.ListSubjects(db))
 			protected.GET("/subjects/:id", handlers.GetSubject(db))
+			protected.POST("/subjects/:id/favorite", handlers.ToggleFavoriteSubject(db))
 
 			// Documents
 			protected.POST("/subjects/:id/documents", handlers.UploadDocument(db, cfg, storageService, tikaService, searchService, activityService))
 			protected.GET("/subjects/:id/documents", handlers.ListDocuments(db))
+			protected.POST("/documents/:id/favorite", handlers.ToggleFavoriteDocument(db))
 			protected.GET("/documents/:id", handlers.GetDocument(db))
 			protected.GET("/documents/:id/download", handlers.DownloadDocument(db, storageService, activityService))
 			protected.DELETE("/documents/:id", handlers.DeleteDocument(db, storageService, searchService, activityService))
 
+			// Comments
+			protected.POST("/subjects/:id/comments", handlers.CreateComment(db))
+			protected.GET("/subjects/:id/comments", handlers.GetCommentsBySubject(db))
+			protected.DELETE("/comments/:id", handlers.DeleteComment(db))
+
+			// Questions & Answers
+			protected.POST("/subjects/:id/questions", handlers.CreateQuestion(db))
+			protected.GET("/subjects/:id/questions", handlers.GetQuestionsBySubject(db))
+			protected.DELETE("/questions/:id", handlers.DeleteQuestion(db))
+			protected.POST("/questions/:id/answers", handlers.CreateAnswer(db, cfg, storageService, tikaService, searchService))
+
 			// Activities
 			protected.GET("/activities/recent", handlers.GetRecentActivities(activityService))
+
+			// Favorites
+			protected.GET("/favorites", handlers.ListFavorites(db))
 
 			// Search
 			protected.GET("/search", handlers.Search(searchService))
