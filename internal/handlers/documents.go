@@ -279,15 +279,23 @@ func DeleteDocument(db *gorm.DB, storage *services.StorageService, search *servi
 func Search(search *services.SearchService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		query := c.Query("q")
-		subjectID := c.Query("subject_id")
-		
-		result, err := search.Search(query, subjectID)
+		if query == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Query parameter 'q' is required"})
+			return
+		}
+
+		searchType := c.Query("type")        // "all", "documents", "subjects"
+		subjectID := c.Query("subject_id")   // Filter by specific subject
+		mimeType := c.Query("mime_type")     // Filter by file type (e.g., "application/pdf")
+		exactMatch := c.Query("exact") == "true" // Exact match mode (disables fuzzy)
+
+		result, err := search.SearchAll(query, searchType, subjectID, mimeType, exactMatch)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Search failed"})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"success": true, "data": result.Hits})
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
 	}
 }
 
