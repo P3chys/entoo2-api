@@ -198,6 +198,28 @@ func CreateSubject(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Get user ID for category creation
+		userID, _ := c.Get("user_id")
+		userUUID, _ := uuid.Parse(userID.(string))
+
+		// Auto-create "Unassigned" categories for each document type
+		types := []string{"lecture", "seminar", "other"}
+		for i, docType := range types {
+			category := models.DocumentCategory{
+				SubjectID:  subject.ID,
+				Type:       docType,
+				NameCS:     "Nepřiřazeno",
+				NameEN:     "Unassigned",
+				OrderIndex: 999, // Put at end
+				CreatedBy:  userUUID,
+			}
+			if err := db.Create(&category).Error; err != nil {
+				// Log error but don't fail subject creation
+				// Categories can be created manually later if needed
+				_ = i // avoid unused variable warning
+			}
+		}
+
 		c.JSON(http.StatusCreated, gin.H{
 			"success": true,
 			"data":    subject,

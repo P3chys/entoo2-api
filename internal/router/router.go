@@ -75,6 +75,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			protected.GET("/documents/:id/download", handlers.DownloadDocument(db, storageService, activityService))
 			protected.DELETE("/documents/:id", handlers.DeleteDocument(db, storageService, searchService, activityService))
 
+			// Categories
+			protected.GET("/subjects/:id/categories", handlers.ListCategories(db))
+
 			// Comments
 			protected.POST("/subjects/:id/comments", handlers.CreateComment(db))
 			protected.GET("/subjects/:id/comments", handlers.GetCommentsBySubject(db))
@@ -109,6 +112,12 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			admin.POST("/subjects", handlers.CreateSubject(db))
 			admin.PUT("/subjects/:id", handlers.UpdateSubject(db))
 			admin.DELETE("/subjects/:id", handlers.DeleteSubject(db))
+
+			// Category management
+			admin.POST("/subjects/:id/categories", handlers.CreateCategory(db))
+			admin.PUT("/categories/:id", handlers.UpdateCategory(db))
+			admin.DELETE("/categories/:id", handlers.DeleteCategory(db))
+			admin.PUT("/categories/reorder", handlers.ReorderCategories(db))
 		}
 	}
 

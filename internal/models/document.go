@@ -12,8 +12,9 @@ type Document struct {
 	SubjectID    uuid.UUID `gorm:"type:uuid;not null;index" json:"subject_id"`
 	UploadedBy   uuid.UUID `gorm:"type:uuid;not null;index" json:"uploaded_by"`
 	AnswerID     *uuid.UUID `gorm:"type:uuid;index" json:"answer_id,omitempty"` // Link to answer if attached
-	Category     string    `gorm:"size:20;default:'other'" json:"category"` // lecture, seminar, other
-	Filename     string    `gorm:"size:255;not null" json:"filename"`
+	Type         string     `gorm:"size:20;default:'other'" json:"type"`       // lecture, seminar, other
+	CategoryID   *uuid.UUID `gorm:"type:uuid;index" json:"category_id,omitempty"`
+	Filename     string     `gorm:"size:255;not null" json:"filename"`
 	OriginalName string    `gorm:"size:255;not null" json:"original_name"`
 	FileSize     int64     `gorm:"not null" json:"file_size"`
 	MimeType     string    `gorm:"size:100;not null" json:"mime_type"`
@@ -22,8 +23,9 @@ type Document struct {
 	CreatedAt    time.Time `gorm:"index" json:"created_at"`
 
 	// Relations
-	Subject  Subject `gorm:"foreignKey:SubjectID" json:"subject,omitempty"`
-	Uploader User    `gorm:"foreignKey:UploadedBy" json:"uploader,omitempty"`
+	Subject  Subject           `gorm:"foreignKey:SubjectID" json:"subject,omitempty"`
+	Uploader User              `gorm:"foreignKey:UploadedBy" json:"uploader,omitempty"`
+	Category *DocumentCategory `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
 
 	// Computed
 	IsFavorite bool `gorm:"->" json:"is_favorite"`

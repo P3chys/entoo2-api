@@ -80,16 +80,16 @@ jobs:
             cd /opt/entoo2
 
             # Pull latest images
-            docker compose -f docker-compose.prod.yml --env-file .env.production pull backend
+            docker compose pull backend
 
             # Restart backend service
-            docker compose -f docker-compose.prod.yml --env-file .env.production up -d backend
+            docker compose up -d backend
 
             # Wait for service to be healthy
             sleep 5
 
             # Check status
-            docker compose -f docker-compose.prod.yml ps backend
+            docker compose ps backend
 
             echo "API deployment completed successfully"
           EOF

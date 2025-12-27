@@ -48,15 +48,19 @@ func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageSe
 		}
 		defer file.Close()
 
-		// Get and validate category
-		category := c.Request.FormValue("category")
-		if category == "" {
-			category = "other"
+		// Get and validate type (formerly category)
+		docType := c.Request.FormValue("type")
+		if docType == "" {
+			docType = "other"
 		}
-		if category != "lecture" && category != "seminar" && category != "other" {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid category. Must be lecture, seminar, or other"})
+		if docType != "lecture" && docType != "seminar" && docType != "other" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid type. Must be lecture, seminar, or other"})
 			return
 		}
+
+		// Get and validate category_id
+		categoryIDStr := c.Request.FormValue("category_id")
+		var categoryID *uuid.UUID
 
 		// Validate file size
 		if header.Size > MaxFileSize {
@@ -73,9 +77,45 @@ func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageSe
 
 		// Verify subject exists
 		var subject models.Subject
-		if err := db.First(&subject, "id = ?", subjectID).Error; err != nil {
+		subjectUUID, err := uuid.Parse(subjectID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid subject ID"})
+			return
+		}
+		if err := db.First(&subject, "id = ?", subjectUUID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Subject not found"})
 			return
+		}
+
+		// Validate and assign category
+		if categoryIDStr != "" {
+			catUUID, err := uuid.Parse(categoryIDStr)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid category ID"})
+				return
+			}
+
+			// Verify category exists, belongs to subject, and matches type
+			var category models.DocumentCategory
+			if err := db.Where("id = ? AND subject_id = ? AND type = ?", catUUID, subjectUUID, docType).First(&category).Error; err != nil {
+				if err == gorm.ErrRecordNotFound {
+					c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid category for this subject and type"})
+				} else {
+					c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database error"})
+				}
+				return
+			}
+			categoryID = &catUUID
+		} else {
+			// Auto-assign to "Unassigned" category
+			var unassignedCategory models.DocumentCategory
+			if err := db.Where("subject_id = ? AND type = ? AND name_cs = ?", subjectUUID, docType, "Nepřiřazeno").First(&unassignedCategory).Error; err != nil {
+				// If no unassigned category exists, continue without category_id (will be NULL)
+				// This handles the case where migration hasn't run yet
+				categoryID = nil
+			} else {
+				categoryID = &unassignedCategory.ID
+			}
 		}
 
 		// Generate unique filename
@@ -100,13 +140,13 @@ func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageSe
 		// Create document record
 		docID := uuid.New()
 		userUUID, _ := uuid.Parse(userID)
-		subjectUUID, _ := uuid.Parse(subjectID)
 
 		document := models.Document{
 			ID:           docID,
 			SubjectID:    subjectUUID,
 			UploadedBy:   userUUID,
-			Category:     category,
+			Type:         docType,
+			CategoryID:   categoryID,
 			Filename:     newFilename,
 			OriginalName: header.Filename,
 			FileSize:     header.Size,
@@ -147,7 +187,7 @@ func ListDocuments(db *gorm.DB) gin.HandlerFunc {
 		
 		// Join with favorites to get status and sort
 		// Order by (user_favorite_documents.user_id IS NOT NULL) DESC
-		query := db.Preload("Uploader").
+		query := db.Preload("Uploader").Preload("Category").
 			Select("documents.*, (CASE WHEN ufd.user_id IS NOT NULL THEN true ELSE false END) as is_favorite").
 			Joins("LEFT JOIN user_favorite_documents ufd ON documents.id = ufd.document_id AND ufd.user_id = ?", userIDStr).
 			Where("documents.subject_id = ?", subjectID)
