@@ -22,6 +22,13 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	tikaService := services.NewTextExtractionService(cfg)
 	searchService := services.NewSearchService(cfg)
 	activityService := services.NewActivityService(db)
+	emailService := services.NewEmailService(cfg)
+
+	// Initialize rate limiter
+	rateLimiter, err := middleware.NewRateLimiter(cfg.RedisURL)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize rate limiter: %v. Rate limiting will be disabled.", err)
+	}
 
 	// Set Gin mode
 	gin.SetMode(cfg.GinMode)
@@ -46,8 +53,27 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		// Public routes
 		auth := api.Group("/auth")
 		{
-			auth.POST("/register", handlers.Register(db, cfg))
+			// Registration and login
+			auth.POST("/register", handlers.Register(db, cfg, emailService))
 			auth.POST("/login", handlers.Login(db, cfg))
+
+			// Email verification
+			auth.GET("/verify-email/:token", handlers.VerifyEmail(db, cfg))
+			if rateLimiter != nil {
+				auth.POST("/verify-email/request", rateLimiter.RateLimitByIP(5, 3600), handlers.RequestEmailVerification(db, cfg, emailService))
+			} else {
+				auth.POST("/verify-email/request", handlers.RequestEmailVerification(db, cfg, emailService))
+			}
+
+			// Password reset
+			if rateLimiter != nil {
+				auth.POST("/password-reset/request", rateLimiter.RateLimitByIP(3, 3600), handlers.RequestPasswordReset(db, cfg, emailService))
+				auth.POST("/password-reset/confirm", rateLimiter.RateLimitByIP(5, 900), handlers.ResetPassword(db))
+			} else {
+				auth.POST("/password-reset/request", handlers.RequestPasswordReset(db, cfg, emailService))
+				auth.POST("/password-reset/confirm", handlers.ResetPassword(db))
+			}
+			auth.GET("/password-reset/verify/:token", handlers.VerifyResetToken(db))
 		}
 
 		// Protected routes

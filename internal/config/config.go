@@ -35,6 +35,21 @@ type Config struct {
 	JWTAccessExpiry  string
 	JWTRefreshExpiry string
 
+	// SMTP
+	SMTPHost      string
+	SMTPPort      string
+	SMTPUsername  string
+	SMTPPassword  string
+	SMTPFromEmail string
+	SMTPFromName  string
+
+	// Application URLs
+	AppURL string
+
+	// Token Expiry
+	EmailVerificationExpiry string
+	PasswordResetExpiry     string
+
 	// CORS
 	CORSOrigins []string
 }
@@ -62,6 +77,18 @@ func Load() *Config {
 		JWTSecret:        getEnv("JWT_SECRET", "development_secret"),
 		JWTAccessExpiry:  getEnv("JWT_ACCESS_EXPIRY", "15m"),
 		JWTRefreshExpiry: getEnv("JWT_REFRESH_EXPIRY", "168h"),
+
+		SMTPHost:      getEnv("SMTP_HOST", "localhost"),
+		SMTPPort:      getEnv("SMTP_PORT", "587"),
+		SMTPUsername:  getEnv("SMTP_USERNAME", ""),
+		SMTPPassword:  getEnv("SMTP_PASSWORD", ""),
+		SMTPFromEmail: getEnv("SMTP_FROM_EMAIL", "noreply@localhost"),
+		SMTPFromName:  getEnv("SMTP_FROM_NAME", "Entoo2 Portal"),
+
+		AppURL: getEnv("APP_URL", "http://localhost:5173"),
+
+		EmailVerificationExpiry: getEnv("EMAIL_VERIFICATION_EXPIRY", "24h"),
+		PasswordResetExpiry:     getEnv("PASSWORD_RESET_EXPIRY", "1h"),
 
 		CORSOrigins: strings.Split(getEnv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000"), ","),
 	}

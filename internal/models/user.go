@@ -24,6 +24,17 @@ type User struct {
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 
+	// Email Verification
+	EmailVerified           bool       `gorm:"default:false" json:"email_verified"`
+	EmailVerificationToken  *string    `gorm:"size:255;index" json:"-"`
+	EmailVerificationSentAt *time.Time `json:"-"`
+	EmailVerifiedAt         *time.Time `json:"email_verified_at,omitempty"`
+
+	// Password Reset
+	PasswordResetToken     *string    `gorm:"size:255;index" json:"-"`
+	PasswordResetSentAt    *time.Time `json:"-"`
+	PasswordResetExpiresAt *time.Time `json:"-"`
+
 	// Favorites
 	FavoriteSubjects  []Subject  `gorm:"many2many:user_favorite_subjects;" json:"favorite_subjects,omitempty"`
 	FavoriteDocuments []Document `gorm:"many2many:user_favorite_documents;" json:"favorite_documents,omitempty"`
