@@ -61,8 +61,9 @@ jobs:
       - name: Deploy to Hetzner
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_HOST: ${{ inputs.environment == 'production' && secrets.SSH_HOST_PROD || secrets.SSH_HOST_STAGING }}
           SSH_USER: ${{ secrets.SSH_USER }}
+          ENVIRONMENT: ${{ inputs.environment }}
         run: |
           # Setup SSH key
           mkdir -p ~/.ssh
@@ -73,11 +74,14 @@ jobs:
           ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
 
           # Deploy via SSH
-          ssh -i ~/.ssh/deploy_key $SSH_USER@$SSH_HOST << 'EOF'
+          ssh -i ~/.ssh/deploy_key $SSH_USER@$SSH_HOST << EOF
             set -e
 
             # Navigate to deployment directory
             cd /opt/entoo2
+
+            # Set environment-specific image tag
+            export IMAGE_TAG=${{ inputs.environment == 'production' && 'latest' || 'staging' }}
 
             # Pull latest images
             docker compose pull backend
@@ -91,7 +95,7 @@ jobs:
             # Check status
             docker compose ps backend
 
-            echo "API deployment completed successfully"
+            echo "API deployment to $ENVIRONMENT completed successfully"
           EOF
 
       - name: Cleanup

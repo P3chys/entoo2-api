@@ -178,6 +178,7 @@ func CreateAnswer(db *gorm.DB, cfg *config.Config, storage *services.StorageServ
 				ID:           docID,
 				SubjectID:    question.SubjectID, // Link to subject so it appears in main list
 				UploadedBy:   userID,
+				Type:         "other", // Documents attached to answers are categorized as 'other'
 				Filename:     newFilename,
 				OriginalName: header.Filename,
 				FileSize:     header.Size,
