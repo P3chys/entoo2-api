@@ -7,12 +7,13 @@ WORKDIR /app
 RUN apk add --no-cache git
 
 # Copy go mod files
-# Copy go mod files
 COPY go.mod go.sum ./
-RUN go mod download
 
-# Copy source code
+# Copy source code first to get all dependencies
 COPY . .
+
+# Download dependencies and tidy
+RUN go mod download && go mod tidy
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main cmd/server/main.go

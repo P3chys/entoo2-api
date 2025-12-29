@@ -60,19 +60,6 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 	// Connect to SMTP server with TLS
 	addr := fmt.Sprintf("%s:%s", s.smtpHost, s.smtpPort)
 
-	// For localhost (development), skip TLS verification
-	var tlsConfig *tls.Config
-	if s.smtpHost == "localhost" || s.smtpHost == "127.0.0.1" {
-		tlsConfig = &tls.Config{
-			InsecureSkipVerify: true,
-			ServerName:         s.smtpHost,
-		}
-	} else {
-		tlsConfig = &tls.Config{
-			ServerName: s.smtpHost,
-		}
-	}
-
 	// Send email
 	// Note: For localhost development without auth, fall back to simple SMTP
 	if s.smtpUsername == "" && s.smtpPassword == "" {
