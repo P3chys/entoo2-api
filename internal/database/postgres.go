@@ -102,6 +102,18 @@ func RunMigrations(db *gorm.DB) error {
 		Language     string    `gorm:"type:varchar(2);default:'cs'"`
 		CreatedAt    time.Time
 		UpdatedAt    time.Time
+
+		// Email Verification
+		EmailVerified          bool       `gorm:"default:false"`
+		EmailVerificationToken *string    `gorm:"size:255;index"`
+		EmailVerificationSentAt *time.Time
+		EmailVerifiedAt        *time.Time
+
+		// Password Reset
+		PasswordResetToken     *string    `gorm:"size:255;index"`
+		PasswordResetSentAt    *time.Time
+		PasswordResetExpiresAt *time.Time
+
 		FavoriteSubjects  []Subject  `gorm:"many2many:user_favorite_subjects;"`
 		FavoriteDocuments []Document `gorm:"many2many:user_favorite_documents;"`
 	}

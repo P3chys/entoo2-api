@@ -28,6 +28,9 @@ WORKDIR /root/
 # Copy binary from builder
 COPY --from=builder /app/main .
 
+# Copy email templates
+COPY --from=builder /app/templates ./templates
+
 EXPOSE 8000
 
 CMD ["./main"]
