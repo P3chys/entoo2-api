@@ -55,7 +55,7 @@ func Register(db *gorm.DB, cfg *config.Config, emailService *services.EmailServi
 				"success": false,
 				"error": gin.H{
 					"code":    "CONFLICT",
-					"message": "Email already exists",
+					"message": "E-mail již existuje",
 				},
 			})
 			return
@@ -68,7 +68,7 @@ func Register(db *gorm.DB, cfg *config.Config, emailService *services.EmailServi
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Failed to hash password",
+					"message": "Nepodařilo se hashovat heslo",
 				},
 			})
 			return
@@ -81,7 +81,7 @@ func Register(db *gorm.DB, cfg *config.Config, emailService *services.EmailServi
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Failed to generate verification token",
+					"message": "Nepodařilo se vygenerovat ověřovací token",
 				},
 			})
 			return
@@ -93,7 +93,7 @@ func Register(db *gorm.DB, cfg *config.Config, emailService *services.EmailServi
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Failed to hash verification token",
+					"message": "Nepodařilo se hashovat ověřovací token",
 				},
 			})
 			return
@@ -121,7 +121,7 @@ func Register(db *gorm.DB, cfg *config.Config, emailService *services.EmailServi
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Failed to create user",
+					"message": "Nepodařilo se vytvořit uživatele",
 				},
 			})
 			return
@@ -136,7 +136,7 @@ func Register(db *gorm.DB, cfg *config.Config, emailService *services.EmailServi
 		c.JSON(http.StatusCreated, gin.H{
 			"success": true,
 			"data": gin.H{
-				"message":    "Registration successful. Please check your email to verify your account.",
+				"message":    "Registrace úspěšná. Zkontrolujte prosím svůj e-mail pro ověření účtu.",
 				"email_sent": true,
 			},
 		})
@@ -164,7 +164,7 @@ func Login(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 				"success": false,
 				"error": gin.H{
 					"code":    "UNAUTHORIZED",
-					"message": "Invalid credentials",
+					"message": "Neplatné přihlašovací údaje",
 				},
 			})
 			return
@@ -176,7 +176,7 @@ func Login(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 				"success": false,
 				"error": gin.H{
 					"code":    "UNAUTHORIZED",
-					"message": "Invalid credentials",
+					"message": "Neplatné přihlašovací údaje",
 				},
 			})
 			return
@@ -188,7 +188,7 @@ func Login(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 				"success": false,
 				"error": gin.H{
 					"code":    "EMAIL_NOT_VERIFIED",
-					"message": "Please verify your email address before logging in.",
+					"message": "Prosím ověřte svou e-mailovou adresu před přihlášením.",
 				},
 			})
 			return
@@ -219,7 +219,7 @@ func GetCurrentUser(db *gorm.DB) gin.HandlerFunc {
 				"success": false,
 				"error": gin.H{
 					"code":    "NOT_FOUND",
-					"message": "User not found",
+					"message": "Uživatel nenalezen",
 				},
 			})
 			return
@@ -266,7 +266,7 @@ func RequestEmailVerification(db *gorm.DB, cfg *config.Config, emailService *ser
 			c.JSON(http.StatusOK, gin.H{
 				"success": true,
 				"data": gin.H{
-					"message": "If an account with this email exists, a verification email has been sent.",
+					"message": "Pokud účet s tímto e-mailem existuje, byl odeslán ověřovací e-mail.",
 				},
 			})
 			return
@@ -277,7 +277,7 @@ func RequestEmailVerification(db *gorm.DB, cfg *config.Config, emailService *ser
 			c.JSON(http.StatusOK, gin.H{
 				"success": true,
 				"data": gin.H{
-					"message": "Email is already verified.",
+					"message": "E-mail je již ověřen.",
 				},
 			})
 			return
@@ -290,7 +290,7 @@ func RequestEmailVerification(db *gorm.DB, cfg *config.Config, emailService *ser
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Failed to generate verification token",
+					"message": "Nepodařilo se vygenerovat ověřovací token",
 				},
 			})
 			return
@@ -302,7 +302,7 @@ func RequestEmailVerification(db *gorm.DB, cfg *config.Config, emailService *ser
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Failed to hash verification token",
+					"message": "Nepodařilo se hashovat ověřovací token",
 				},
 			})
 			return
@@ -318,7 +318,7 @@ func RequestEmailVerification(db *gorm.DB, cfg *config.Config, emailService *ser
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Failed to update user",
+					"message": "Nepodařilo se aktualizovat uživatele",
 				},
 			})
 			return
@@ -332,7 +332,7 @@ func RequestEmailVerification(db *gorm.DB, cfg *config.Config, emailService *ser
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"data": gin.H{
-				"message": "Verification email sent. Please check your inbox.",
+				"message": "Ověřovací e-mail odeslán. Zkontrolujte prosím svou schránku.",
 			},
 		})
 	}
@@ -348,7 +348,7 @@ func VerifyEmail(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 				"success": false,
 				"error": gin.H{
 					"code":    "VALIDATION_ERROR",
-					"message": "Token is required",
+					"message": "Token je povinný",
 				},
 			})
 			return
@@ -361,7 +361,7 @@ func VerifyEmail(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Database error",
+					"message": "Chyba databáze",
 				},
 			})
 			return
@@ -383,7 +383,7 @@ func VerifyEmail(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 				"success": false,
 				"error": gin.H{
 					"code":    "INVALID_TOKEN",
-					"message": "Invalid or expired verification token",
+					"message": "Neplatný nebo expirovaný ověřovací token",
 				},
 			})
 			return
@@ -397,7 +397,7 @@ func VerifyEmail(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 					"success": false,
 					"error": gin.H{
 						"code":    "TOKEN_EXPIRED",
-						"message": "Verification token has expired. Please request a new one.",
+						"message": "Ověřovací token vypršel. Požádejte prosím o nový.",
 					},
 				})
 				return
@@ -416,7 +416,7 @@ func VerifyEmail(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Failed to verify email",
+					"message": "Nepodařilo se ověřit e-mail",
 				},
 			})
 			return
@@ -425,7 +425,7 @@ func VerifyEmail(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"data": gin.H{
-				"message": "Email verified successfully. You can now log in.",
+				"message": "E-mail úspěšně ověřen. Nyní se můžete přihlásit.",
 			},
 		})
 	}
@@ -458,7 +458,7 @@ func RequestPasswordReset(db *gorm.DB, cfg *config.Config, emailService *service
 			c.JSON(http.StatusOK, gin.H{
 				"success": true,
 				"data": gin.H{
-					"message": "If an account with this email exists, a password reset email has been sent.",
+					"message": "Pokud účet s tímto e-mailem existuje, byl odeslán e-mail pro obnovení hesla.",
 				},
 			})
 			return
@@ -471,7 +471,7 @@ func RequestPasswordReset(db *gorm.DB, cfg *config.Config, emailService *service
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Failed to generate reset token",
+					"message": "Nepodařilo se vygenerovat token pro obnovení",
 				},
 			})
 			return
@@ -483,7 +483,7 @@ func RequestPasswordReset(db *gorm.DB, cfg *config.Config, emailService *service
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Failed to hash reset token",
+					"message": "Nepodařilo se hashovat token pro obnovení",
 				},
 			})
 			return
@@ -503,7 +503,7 @@ func RequestPasswordReset(db *gorm.DB, cfg *config.Config, emailService *service
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Failed to update user",
+					"message": "Nepodařilo se aktualizovat uživatele",
 				},
 			})
 			return
@@ -517,7 +517,7 @@ func RequestPasswordReset(db *gorm.DB, cfg *config.Config, emailService *service
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"data": gin.H{
-				"message": "If an account with this email exists, a password reset email has been sent.",
+				"message": "Pokud účet s tímto e-mailem existuje, byl odeslán e-mail pro obnovení hesla.",
 			},
 		})
 	}
@@ -533,7 +533,7 @@ func VerifyResetToken(db *gorm.DB) gin.HandlerFunc {
 				"success": false,
 				"error": gin.H{
 					"code":    "VALIDATION_ERROR",
-					"message": "Token is required",
+					"message": "Token je povinný",
 				},
 			})
 			return
@@ -546,7 +546,7 @@ func VerifyResetToken(db *gorm.DB) gin.HandlerFunc {
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Database error",
+					"message": "Chyba databáze",
 				},
 			})
 			return
@@ -568,7 +568,7 @@ func VerifyResetToken(db *gorm.DB) gin.HandlerFunc {
 				"success": false,
 				"error": gin.H{
 					"code":    "INVALID_TOKEN",
-					"message": "Invalid or expired reset token",
+					"message": "Neplatný nebo expirovaný token pro obnovení",
 				},
 			})
 			return
@@ -581,7 +581,7 @@ func VerifyResetToken(db *gorm.DB) gin.HandlerFunc {
 					"success": false,
 					"error": gin.H{
 						"code":    "TOKEN_EXPIRED",
-						"message": "Reset token has expired. Please request a new one.",
+						"message": "Token pro obnovení vypršel. Požádejte prosím o nový.",
 					},
 				})
 				return
@@ -591,7 +591,7 @@ func VerifyResetToken(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"data": gin.H{
-				"message": "Token is valid",
+				"message": "Token je platný",
 				"valid":   true,
 			},
 		})
@@ -626,7 +626,7 @@ func ResetPassword(db *gorm.DB) gin.HandlerFunc {
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Database error",
+					"message": "Chyba databáze",
 				},
 			})
 			return
@@ -648,7 +648,7 @@ func ResetPassword(db *gorm.DB) gin.HandlerFunc {
 				"success": false,
 				"error": gin.H{
 					"code":    "INVALID_TOKEN",
-					"message": "Invalid or expired reset token",
+					"message": "Neplatný nebo expirovaný token pro obnovení",
 				},
 			})
 			return
@@ -661,7 +661,7 @@ func ResetPassword(db *gorm.DB) gin.HandlerFunc {
 					"success": false,
 					"error": gin.H{
 						"code":    "TOKEN_EXPIRED",
-						"message": "Reset token has expired. Please request a new one.",
+						"message": "Token pro obnovení vypršel. Požádejte prosím o nový.",
 					},
 				})
 				return
@@ -675,7 +675,7 @@ func ResetPassword(db *gorm.DB) gin.HandlerFunc {
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Failed to hash password",
+					"message": "Nepodařilo se hashovat heslo",
 				},
 			})
 			return
@@ -692,7 +692,7 @@ func ResetPassword(db *gorm.DB) gin.HandlerFunc {
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Failed to reset password",
+					"message": "Nepodařilo se obnovit heslo",
 				},
 			})
 			return
@@ -701,7 +701,7 @@ func ResetPassword(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"data": gin.H{
-				"message": "Password reset successfully. You can now log in with your new password.",
+				"message": "Heslo úspěšně obnoveno. Nyní se můžete přihlásit s novým heslem.",
 			},
 		})
 	}
