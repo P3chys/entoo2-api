@@ -2,7 +2,6 @@ package services
 
 import (
 	"bytes"
-	"crypto/tls"
 	"fmt"
 	"html/template"
 	"net/smtp"
