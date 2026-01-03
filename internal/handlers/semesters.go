@@ -12,13 +12,11 @@ import (
 // Request/Response types
 type CreateSemesterRequest struct {
 	NameCS     string `json:"name_cs" binding:"required"`
-	NameEN     string `json:"name_en" binding:"required"`
 	OrderIndex int    `json:"order_index"`
 }
 
 type UpdateSemesterRequest struct {
 	NameCS     *string `json:"name_cs"`
-	NameEN     *string `json:"name_en"`
 	OrderIndex *int    `json:"order_index"`
 }
 
@@ -106,7 +104,6 @@ func CreateSemester(db *gorm.DB) gin.HandlerFunc {
 
 		semester := models.Semester{
 			NameCS:     req.NameCS,
-			NameEN:     req.NameEN,
 			OrderIndex: req.OrderIndex,
 		}
 
@@ -181,9 +178,6 @@ func UpdateSemester(db *gorm.DB) gin.HandlerFunc {
 		// Update fields if provided
 		if req.NameCS != nil {
 			semester.NameCS = *req.NameCS
-		}
-		if req.NameEN != nil {
-			semester.NameEN = *req.NameEN
 		}
 		if req.OrderIndex != nil {
 			semester.OrderIndex = *req.OrderIndex

@@ -37,7 +37,6 @@ func RunMigrations(db *gorm.DB) error {
 	type Semester struct {
 		ID         string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
 		NameCS     string    `gorm:"column:name_cs;size:100;not null"`
-		NameEN     string    `gorm:"column:name_en;size:100;not null"`
 		OrderIndex int       `gorm:"column:order_index;default:0"`
 		CreatedAt  time.Time
 		UpdatedAt  time.Time
@@ -47,10 +46,8 @@ func RunMigrations(db *gorm.DB) error {
 		ID            string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
 		SemesterID    string    `gorm:"type:uuid;not null"`
 		NameCS        string    `gorm:"column:name_cs;size:200;not null"`
-		NameEN        string    `gorm:"column:name_en;size:200;not null"`
 		Code          string    `gorm:"size:10;uniqueIndex"`
 		DescriptionCS string    `gorm:"column:description_cs;type:text"`
-		DescriptionEN string    `gorm:"column:description_en;type:text"`
 		Credits       int       `gorm:"default:0"`
 		CreatedAt     time.Time
 		UpdatedAt     time.Time
@@ -61,7 +58,6 @@ func RunMigrations(db *gorm.DB) error {
 		SubjectID   string    `gorm:"type:uuid;not null"`
 		TeacherName string    `gorm:"size:200;not null"`
 		TopicCS     string    `gorm:"size:300"`
-		TopicEN     string    `gorm:"size:300"`
 		CreatedAt   time.Time
 	}
 
@@ -158,6 +154,13 @@ func RunMigrations(db *gorm.DB) error {
 		UpdatedAt  time.Time
 	}
 
+	// Drop English language columns if they exist
+	// This is a one-time migration to remove English fields from the database
+	if err := dropEnglishColumns(db); err != nil {
+		log.Printf("Warning: Failed to drop English columns: %v", err)
+		// Continue anyway as columns might already be dropped
+	}
+
 	// Auto-migrate all models
 	err := db.AutoMigrate(&User{}, &Semester{}, &Subject{}, &SubjectTeacher{}, &DocumentCategory{}, &Document{}, &Activity{}, &Comment{}, &Question{}, &Answer{})
 	if err != nil {
@@ -165,5 +168,54 @@ func RunMigrations(db *gorm.DB) error {
 	}
 
 	log.Println("Migrations completed successfully")
+	return nil
+}
+
+// dropEnglishColumns drops English language columns from tables
+// This is a one-time migration to remove bilingual support
+func dropEnglishColumns(db *gorm.DB) error {
+	log.Println("Dropping English language columns...")
+
+	// List of columns to drop
+	migrations := []struct {
+		table  string
+		column string
+	}{
+		{"semesters", "name_en"},
+		{"subjects", "name_en"},
+		{"subjects", "description_en"},
+		{"subject_teachers", "topic_en"},
+	}
+
+	for _, m := range migrations {
+		// Check if column exists before attempting to drop
+		var columnExists bool
+		query := `
+			SELECT EXISTS (
+				SELECT 1
+				FROM information_schema.columns
+				WHERE table_name = ?
+				AND column_name = ?
+			)
+		`
+		if err := db.Raw(query, m.table, m.column).Scan(&columnExists).Error; err != nil {
+			log.Printf("Warning: Failed to check if column %s.%s exists: %v", m.table, m.column, err)
+			continue
+		}
+
+		if columnExists {
+			sql := fmt.Sprintf("ALTER TABLE %s DROP COLUMN IF EXISTS %s", m.table, m.column)
+			if err := db.Exec(sql).Error; err != nil {
+				log.Printf("Warning: Failed to drop column %s.%s: %v", m.table, m.column, err)
+				// Continue with other columns even if one fails
+				continue
+			}
+			log.Printf("Dropped column %s.%s", m.table, m.column)
+		} else {
+			log.Printf("Column %s.%s does not exist, skipping", m.table, m.column)
+		}
+	}
+
+	log.Println("English language columns dropped successfully")
 	return nil
 }

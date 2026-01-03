@@ -13,16 +13,13 @@ import (
 type TeacherRequest struct {
 	Name    string `json:"name" binding:"required"`
 	TopicCS string `json:"topic_cs"`
-	TopicEN string `json:"topic_en"`
 }
 
 type CreateSubjectRequest struct {
 	SemesterID    string           `json:"semester_id" binding:"required"`
 	NameCS        string           `json:"name_cs" binding:"required"`
-	NameEN        string           `json:"name_en" binding:"required"`
 	Code          string           `json:"code" binding:"required,min=3,max=6"`
 	DescriptionCS string           `json:"description_cs"`
-	DescriptionEN string           `json:"description_en"`
 	Credits       int              `json:"credits"`
 	Teachers      []TeacherRequest `json:"teachers"`
 }
@@ -30,10 +27,8 @@ type CreateSubjectRequest struct {
 type UpdateSubjectRequest struct {
 	SemesterID    *string           `json:"semester_id"`
 	NameCS        *string           `json:"name_cs"`
-	NameEN        *string           `json:"name_en"`
 	Code          *string           `json:"code"`
 	DescriptionCS *string           `json:"description_cs"`
-	DescriptionEN *string           `json:"description_en"`
 	Credits       *int              `json:"credits"`
 	Teachers      *[]TeacherRequest `json:"teachers"`
 }
@@ -169,10 +164,8 @@ func CreateSubject(db *gorm.DB) gin.HandlerFunc {
 		subject := models.Subject{
 			SemesterID:    semesterID,
 			NameCS:        req.NameCS,
-			NameEN:        req.NameEN,
 			Code:          req.Code,
 			DescriptionCS: req.DescriptionCS,
-			DescriptionEN: req.DescriptionEN,
 			Credits:       req.Credits,
 		}
 
@@ -182,7 +175,6 @@ func CreateSubject(db *gorm.DB) gin.HandlerFunc {
 				subject.Teachers[i] = models.SubjectTeacher{
 					TeacherName: t.Name,
 					TopicCS:     t.TopicCS,
-					TopicEN:     t.TopicEN,
 				}
 			}
 		}
@@ -291,14 +283,8 @@ func UpdateSubject(db *gorm.DB) gin.HandlerFunc {
 		if req.NameCS != nil {
 			subject.NameCS = *req.NameCS
 		}
-		if req.NameEN != nil {
-			subject.NameEN = *req.NameEN
-		}
 		if req.DescriptionCS != nil {
 			subject.DescriptionCS = *req.DescriptionCS
-		}
-		if req.DescriptionEN != nil {
-			subject.DescriptionEN = *req.DescriptionEN
 		}
 		if req.Code != nil {
 			subject.Code = *req.Code
@@ -321,7 +307,6 @@ func UpdateSubject(db *gorm.DB) gin.HandlerFunc {
 							SubjectID:   subject.ID,
 							TeacherName: t.Name,
 							TopicCS:     t.TopicCS,
-							TopicEN:     t.TopicEN,
 						}
 					}
 					if err := tx.Create(&newTeachers).Error; err != nil {

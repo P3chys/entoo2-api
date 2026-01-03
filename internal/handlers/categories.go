@@ -14,7 +14,7 @@ import (
 type CreateCategoryRequest struct {
 	Type   string `json:"type" binding:"required,oneof=lecture seminar other"`
 	NameCS string `json:"name_cs" binding:"required,max=200"`
-	NameEN string `json:"name_en" binding:"required,max=200"`
+	NameEN string `json:"name_en" binding:"omitempty,max=200"`
 }
 
 // UpdateCategoryRequest defines the request body for updating a category
@@ -79,8 +79,14 @@ func CreateCategory(db *gorm.DB) gin.HandlerFunc {
 
 		// Check for duplicate category name within the same subject and type
 		var existingCategory models.DocumentCategory
-		err = db.Where("subject_id = ? AND type = ? AND (name_cs = ? OR name_en = ?)",
-			subjectUUID, req.Type, req.NameCS, req.NameEN).First(&existingCategory).Error
+		query := db.Where("subject_id = ? AND type = ? AND name_cs = ?", subjectUUID, req.Type, req.NameCS)
+
+		// Only check name_en if it's provided
+		if req.NameEN != "" {
+			query = query.Or("subject_id = ? AND type = ? AND name_en = ?", subjectUUID, req.Type, req.NameEN)
+		}
+
+		err = query.First(&existingCategory).Error
 
 		if err == nil {
 			c.JSON(http.StatusConflict, gin.H{

@@ -11,10 +11,8 @@ type Subject struct {
 	ID            uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
 	SemesterID    uuid.UUID `gorm:"type:uuid;not null" json:"semester_id"`
 	NameCS        string    `gorm:"size:200;not null" json:"name_cs"`
-	NameEN        string    `gorm:"size:200;not null" json:"name_en"`
 	Code          string    `gorm:"size:10;uniqueIndex" json:"code"`
 	DescriptionCS string    `gorm:"type:text" json:"description_cs"`
-	DescriptionEN string    `gorm:"type:text" json:"description_en"`
 	Credits       int       `gorm:"default:0" json:"credits"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
@@ -46,7 +44,6 @@ type SubjectTeacher struct {
 	SubjectID   uuid.UUID `gorm:"type:uuid;not null" json:"subject_id"`
 	TeacherName string    `gorm:"size:200;not null" json:"teacher_name"`
 	TopicCS     string    `gorm:"size:300" json:"topic_cs"`
-	TopicEN     string    `gorm:"size:300" json:"topic_en"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
