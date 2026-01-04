@@ -17,10 +17,7 @@ func main() {
 	log.Println("Starting document categories migration...")
 
 	// Load configuration
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
-	}
+	cfg := config.Load()
 
 	// Connect to database
 	db, err := database.Connect(cfg.DatabaseURL)

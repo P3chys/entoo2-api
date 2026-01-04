@@ -112,7 +112,6 @@ func getOrCreateUnassignedSemester(db *gorm.DB) (uuid.UUID, error) {
 	semester = models.Semester{
 		ID:         uuid.New(),
 		NameCS:     "Nepřiřazeno",
-		NameEN:     "Unassigned",
 		OrderIndex: 999, // Put at the end
 	}
 
@@ -213,10 +212,8 @@ func importSubjects(db *gorm.DB, storage *services.StorageService, baseDir strin
 			ID:            uuid.New(),
 			SemesterID:    semesterID,
 			NameCS:        subjectName,
-			NameEN:        subjectName, // Use same name for EN since we don't have translations
 			Code:          code,
 			DescriptionCS: "",
-			DescriptionEN: "",
 			Credits:       0,
 		}
 
