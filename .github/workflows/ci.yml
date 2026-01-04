@@ -39,15 +39,31 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Check for test files
+        id: check_tests
+        run: |
+          if find . -name "*_test.go" -type f | grep -q .; then
+            echo "has_tests=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_tests=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Run tests
+        if: steps.check_tests.outputs.has_tests == 'true'
         env:
           DATABASE_URL: postgres://entoo2:entoo2_test@localhost:5432/entoo2_test?sslmode=disable
         run: go test -v -race -coverprofile=coverage.out ./...
 
       - name: Upload coverage
+        if: steps.check_tests.outputs.has_tests == 'true'
         uses: codecov/codecov-action@v3
         with:
           file: ./coverage.out
+          fail_ci_if_error: false
+
+      - name: No tests found
+        if: steps.check_tests.outputs.has_tests == 'false'
+        run: echo "No test files found - skipping tests"
 
   lint:
     name: Lint
