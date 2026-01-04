@@ -22,12 +22,11 @@ func NewSearchService(cfg *config.Config) *SearchService {
 	// Ensure documents index exists (best effort)
 	_, err := client.GetIndex("documents")
 	if err != nil {
-		_, err = client.CreateIndex(&meilisearch.IndexConfig{
+		if _, createErr := client.CreateIndex(&meilisearch.IndexConfig{
 			Uid:        "documents",
 			PrimaryKey: "id",
-		})
-		if err != nil {
-			log.Printf("Failed to create meilisearch documents index: %v", err)
+		}); createErr != nil {
+			log.Printf("Failed to create meilisearch documents index: %v", createErr)
 		}
 	}
 
@@ -75,12 +74,11 @@ func NewSearchService(cfg *config.Config) *SearchService {
 	// Ensure subjects index exists (best effort)
 	_, err = client.GetIndex("subjects")
 	if err != nil {
-		_, err = client.CreateIndex(&meilisearch.IndexConfig{
+		if _, createErr := client.CreateIndex(&meilisearch.IndexConfig{
 			Uid:        "subjects",
 			PrimaryKey: "id",
-		})
-		if err != nil {
-			log.Printf("Failed to create meilisearch subjects index: %v", err)
+		}); createErr != nil {
+			log.Printf("Failed to create meilisearch subjects index: %v", createErr)
 		}
 	}
 
