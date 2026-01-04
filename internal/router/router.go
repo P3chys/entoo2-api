@@ -121,6 +121,11 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			// Favorites
 			protected.GET("/favorites", handlers.ListFavorites(db))
 
+			// Teacher ratings
+			protected.POST("/teachers/:id/rate", handlers.RateTeacher(db))
+			protected.DELETE("/teachers/:id/rate", handlers.DeleteTeacherRating(db))
+			protected.GET("/teachers/:id/ratings", handlers.GetTeacherRatings(db))
+
 			// Search
 			protected.GET("/search", handlers.Search(searchService))
 		}

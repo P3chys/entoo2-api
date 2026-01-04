@@ -154,6 +154,15 @@ func RunMigrations(db *gorm.DB) error {
 		UpdatedAt  time.Time
 	}
 
+	type TeacherRating struct {
+		ID               string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+		SubjectTeacherID string    `gorm:"type:uuid;not null;index"`
+		UserID           string    `gorm:"type:uuid;not null;index"`
+		Rating           int       `gorm:"not null;check:rating >= 1 AND rating <= 5"`
+		CreatedAt        time.Time
+		UpdatedAt        time.Time
+	}
+
 	// Drop English language columns if they exist
 	// This is a one-time migration to remove English fields from the database
 	if err := dropEnglishColumns(db); err != nil {
@@ -162,9 +171,18 @@ func RunMigrations(db *gorm.DB) error {
 	}
 
 	// Auto-migrate all models
-	err := db.AutoMigrate(&User{}, &Semester{}, &Subject{}, &SubjectTeacher{}, &DocumentCategory{}, &Document{}, &Activity{}, &Comment{}, &Question{}, &Answer{})
+	err := db.AutoMigrate(&User{}, &Semester{}, &Subject{}, &SubjectTeacher{}, &DocumentCategory{}, &Document{}, &Activity{}, &Comment{}, &Question{}, &Answer{}, &TeacherRating{})
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+
+	// Add unique constraint for teacher ratings (one rating per user per teacher)
+	if err := db.Exec(`
+		CREATE UNIQUE INDEX IF NOT EXISTS unique_user_teacher_rating
+		ON teacher_ratings(subject_teacher_id, user_id)
+	`).Error; err != nil {
+		log.Printf("Warning: Failed to create unique constraint on teacher_ratings: %v", err)
+		// Continue anyway as constraint might already exist
 	}
 
 	log.Println("Migrations completed successfully")

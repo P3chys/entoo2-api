@@ -92,8 +92,25 @@ func GetSubject(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		userIDStr := c.GetString("user_id")
+
 		var subject models.Subject
-		if err := db.Preload("Semester").Preload("Teachers").First(&subject, "id = ?", subjectID).Error; err != nil {
+		err = db.Preload("Semester").
+			Preload("Teachers", func(db *gorm.DB) *gorm.DB {
+				return db.Select(`
+					subject_teachers.*,
+					COALESCE(AVG(teacher_ratings.rating), 0) as average_rating,
+					COUNT(teacher_ratings.id) as total_ratings,
+					(SELECT rating FROM teacher_ratings
+					 WHERE subject_teacher_id = subject_teachers.id
+					 AND user_id = ?) as user_rating
+				`, userIDStr).
+					Joins("LEFT JOIN teacher_ratings ON teacher_ratings.subject_teacher_id = subject_teachers.id").
+					Group("subject_teachers.id")
+			}).
+			First(&subject, "id = ?", subjectID).Error
+
+		if err != nil {
 			if err == gorm.ErrRecordNotFound {
 				c.JSON(http.StatusNotFound, gin.H{
 					"success": false,

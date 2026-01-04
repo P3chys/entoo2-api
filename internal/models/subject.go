@@ -45,6 +45,11 @@ type SubjectTeacher struct {
 	TeacherName string    `gorm:"size:200;not null" json:"teacher_name"`
 	TopicCS     string    `gorm:"size:300" json:"topic_cs"`
 	CreatedAt   time.Time `json:"created_at"`
+
+	// Computed fields (not stored in DB, computed in queries)
+	AverageRating *float64 `gorm:"->" json:"average_rating,omitempty"`
+	TotalRatings  *int     `gorm:"->" json:"total_ratings,omitempty"`
+	UserRating    *int     `gorm:"->" json:"user_rating,omitempty"`
 }
 
 func (SubjectTeacher) TableName() string {
