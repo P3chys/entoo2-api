@@ -97,7 +97,7 @@ func getOrCreateUnassignedSemester(db *gorm.DB) (uuid.UUID, error) {
 	var semester models.Semester
 
 	// Try to find existing "Unassigned" semester
-	err := db.Where("name_cs = ? OR name_en = ?", "Nepřiřazeno", "Unassigned").First(&semester).Error
+	err := db.Where("name_cs = ?", "Nepřiřazeno").First(&semester).Error
 
 	if err == nil {
 		log.Printf("Found existing unassigned semester: %s", semester.ID)
