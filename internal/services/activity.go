@@ -21,9 +21,8 @@ func NewActivityService(db *gorm.DB) *ActivityService {
 func (s *ActivityService) CreateActivity(userID uuid.UUID, activityType models.ActivityType, subjectID, documentID *uuid.UUID, metadata map[string]interface{}) error {
 	metadataJSON := "{}"
 	if len(metadata) > 0 {
-		if bytes, err := json.Marshal(metadata); err == nil {
-			metadataJSON = string(bytes)
-		}
+		bytes, _ := json.Marshal(metadata)
+		metadataJSON = string(bytes)
 	}
 
 	activity := models.Activity{
