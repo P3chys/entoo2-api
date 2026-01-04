@@ -139,8 +139,7 @@ func getOrCreateAdminUser(db *gorm.DB) (uuid.UUID, error) {
 	}
 
 	// If no admin exists, find any user
-	err = db.First(&user).Error
-	if err == nil {
+	if err = db.First(&user).Error; err == nil {
 		log.Printf("Using existing user: %s (%s)", user.Email, user.ID)
 		return user.ID, nil
 	}
