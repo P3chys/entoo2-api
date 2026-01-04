@@ -190,14 +190,14 @@ func CreateAnswer(db *gorm.DB, cfg *config.Config, storage *services.StorageServ
 			}
 
 			if err := db.Create(&document).Error; err != nil {
-				storage.DeleteFile(newFilename)
+				_ = storage.DeleteFile(newFilename)
 				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to save document record"})
 				return
 			}
 
 			// Index
 			go func() {
-				search.IndexDocument(document)
+				_ = search.IndexDocument(document)
 			}()
 
 			documentID = &docID

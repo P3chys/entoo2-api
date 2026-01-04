@@ -22,7 +22,7 @@ func NewTextExtractionService(cfg *config.Config) *TextExtractionService {
 func (s *TextExtractionService) ExtractText(file multipart.File) (string, error) {
 	// Need to seek to start of file as it might have been read by storage service
 	if seeker, ok := file.(io.Seeker); ok {
-		seeker.Seek(0, 0)
+		_, _ = seeker.Seek(0, 0)
 	}
 
 	req, err := http.NewRequest("PUT", s.tikaURL+"/tika", file)

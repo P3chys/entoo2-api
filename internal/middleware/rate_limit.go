@@ -49,7 +49,7 @@ func (rl *RateLimiter) RateLimitByIP(maxRequests int, window int) gin.HandlerFun
 		count, err := rl.redis.Incr(ctx, key).Result()
 		if err != nil {
 			// If Redis fails, allow the request but log the error
-			c.Error(fmt.Errorf("rate limiter error: %w", err))
+			_ = c.Error(fmt.Errorf("rate limiter error: %w", err))
 			c.Next()
 			return
 		}
@@ -126,7 +126,7 @@ func (rl *RateLimiter) RateLimitByEmail(maxRequests int, window int, emailField 
 		count, err := rl.redis.Incr(ctx, key).Result()
 		if err != nil {
 			// If Redis fails, allow the request but log the error
-			c.Error(fmt.Errorf("rate limiter error: %w", err))
+			_ = c.Error(fmt.Errorf("rate limiter error: %w", err))
 			c.Next()
 			return
 		}

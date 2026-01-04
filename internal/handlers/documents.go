@@ -157,19 +157,19 @@ func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageSe
 
 		if err := db.Create(&document).Error; err != nil {
 			// Cleanup MinIO
-			storage.DeleteFile(newFilename)
+			_ = storage.DeleteFile(newFilename)
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to save document record"})
 			return
 		}
 
 		// Index in Meilisearch (async)
 		go func() {
-			search.IndexDocument(document)
+			_ = search.IndexDocument(document)
 		}()
 
 		// Create activity
 		go func() {
-			activity.CreateActivity(userUUID, models.ActivityDocumentUploaded, &subjectUUID, &docID, nil)
+			_ = activity.CreateActivity(userUUID, models.ActivityDocumentUploaded, &subjectUUID, &docID, nil)
 		}()
 
 		c.JSON(http.StatusCreated, gin.H{"success": true, "data": document})
@@ -297,13 +297,13 @@ func DeleteDocument(db *gorm.DB, storage *services.StorageService, search *servi
 
 		// Delete from Meilisearch
 		go func() {
-			search.DeleteDocument(document.ID.String())
+			_ = search.DeleteDocument(document.ID.String())
 		}()
 
 		// Create activity
 		go func() {
 			userUUID, _ := uuid.Parse(userID)
-			activity.CreateActivity(userUUID, models.ActivityDocumentDeleted, &document.SubjectID, &document.ID, nil)
+			_ = activity.CreateActivity(userUUID, models.ActivityDocumentDeleted, &document.SubjectID, &document.ID, nil)
 		}()
 
 		// Delete from DB

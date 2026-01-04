@@ -284,25 +284,11 @@ func generateSubjectCode(name string) string {
 	return result
 }
 
-func countFiles(dir string) int {
-	count := 0
-	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if !d.IsDir() {
-			count++
-		}
-		return nil
-	})
-	return count
-}
-
 func uploadSubjectFiles(db *gorm.DB, storage *services.StorageService, subjectDir string, subjectID uuid.UUID, uploaderID uuid.UUID) (int, int) {
 	totalFiles := 0
 	uploadedFiles := 0
 
-	err := filepath.WalkDir(subjectDir, func(path string, d fs.DirEntry, err error) error {
+	_ = filepath.WalkDir(subjectDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil // Skip files we can't access
 		}
@@ -367,7 +353,7 @@ func uploadSubjectFiles(db *gorm.DB, storage *services.StorageService, subjectDi
 		if err := db.Create(&document).Error; err != nil {
 			log.Printf("    Failed to create document record for %s: %v", relPath, err)
 			// Try to delete the uploaded file from MinIO
-			storage.DeleteFile(filename)
+			_ = storage.DeleteFile(filename)
 			return nil
 		}
 
