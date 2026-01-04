@@ -1,0 +1,18 @@
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - typecheck
+    - unused
+
+output:
+  format: line-number
+  print-issued-lines: true
+  print-linter-name: true
+  uniq-by-line: true
+
+run:
+  timeout: 5m
