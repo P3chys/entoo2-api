@@ -20,8 +20,7 @@ func NewSearchService(cfg *config.Config) *SearchService {
 	})
 
 	// Ensure documents index exists (best effort)
-	_, err := client.GetIndex("documents")
-	if err != nil {
+	if _, indexErr := client.GetIndex("documents"); indexErr != nil {
 		if _, createErr := client.CreateIndex(&meilisearch.IndexConfig{
 			Uid:        "documents",
 			PrimaryKey: "id",
@@ -34,7 +33,7 @@ func NewSearchService(cfg *config.Config) *SearchService {
 	docIndex := client.Index("documents")
 
 	// Configure filterable attributes
-	_, err = docIndex.UpdateFilterableAttributes(&[]string{"subject_id", "mime_type", "category"})
+	_, err := docIndex.UpdateFilterableAttributes(&[]string{"subject_id", "mime_type", "category"})
 	if err != nil {
 		log.Printf("Failed to update filterable attributes: %v", err)
 	}
@@ -72,8 +71,7 @@ func NewSearchService(cfg *config.Config) *SearchService {
 	// Default: 1 typo for words >= 5 chars, 2 typos for words >= 9 chars
 
 	// Ensure subjects index exists (best effort)
-	_, err = client.GetIndex("subjects")
-	if err != nil {
+	if _, indexErr := client.GetIndex("subjects"); indexErr != nil {
 		if _, createErr := client.CreateIndex(&meilisearch.IndexConfig{
 			Uid:        "subjects",
 			PrimaryKey: "id",
