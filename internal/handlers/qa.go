@@ -222,10 +222,8 @@ func CreateAnswer(db *gorm.DB, cfg *config.Config, storage *services.StorageServ
 			db.Model(&models.Document{}).Where("id = ?", documentID).Update("answer_id", answer.ID)
 		}
 
-		// Preload for response
-		if err := db.Preload("User").Preload("Document").First(&answer, answer.ID).Error; err != nil {
-			// ignore error, just return basic
-		}
+		// Preload for response (ignore error, just return basic if preload fails)
+		_ = db.Preload("User").Preload("Document").First(&answer, answer.ID).Error
 
 		c.JSON(http.StatusCreated, gin.H{"success": true, "data": answer})
 	}
@@ -242,8 +240,8 @@ func DeleteQuestion(db *gorm.DB) gin.HandlerFunc {
 		}
 		
 		userIDStr := c.GetString("user_id")
-		userID, err := uuid.Parse(userIDStr)
-		
+		userID, _ := uuid.Parse(userIDStr)
+
 		var question models.Question
 		if err := db.First(&question, "id = ?", questionID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Question not found"})
