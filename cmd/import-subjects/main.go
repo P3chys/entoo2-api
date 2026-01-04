@@ -288,7 +288,7 @@ func uploadSubjectFiles(db *gorm.DB, storage *services.StorageService, subjectDi
 	totalFiles := 0
 	uploadedFiles := 0
 
-	_ = filepath.WalkDir(subjectDir, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(subjectDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil // Skip files we can't access
 		}
