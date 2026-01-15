@@ -128,6 +128,29 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 			// Search
 			protected.GET("/search", handlers.Search(searchService))
+
+			// Flashcard Decks
+			protected.GET("/subjects/:id/decks", handlers.ListDecksBySubject(db))
+			protected.POST("/subjects/:id/decks", handlers.CreateDeck(db))
+			protected.GET("/decks", handlers.ListPublicDecks(db))
+			protected.GET("/decks/:id", handlers.GetDeck(db))
+			protected.PUT("/decks/:id", handlers.UpdateDeck(db))
+			protected.DELETE("/decks/:id", handlers.DeleteDeck(db))
+			protected.POST("/decks/:id/favorite", handlers.ToggleFavoriteDeck(db))
+			protected.GET("/decks/:id/progress", handlers.GetDeckProgress(db))
+			protected.POST("/decks/:id/clone", handlers.CloneDeck(db))
+
+			// Flashcards
+			protected.POST("/decks/:id/cards", handlers.CreateFlashcard(db))
+			protected.POST("/decks/:id/cards/bulk", handlers.BulkCreateFlashcards(db))
+			protected.PUT("/cards/:id", handlers.UpdateFlashcard(db))
+			protected.DELETE("/cards/:id", handlers.DeleteFlashcard(db))
+			protected.PUT("/decks/:id/cards/reorder", handlers.ReorderFlashcards(db))
+
+			// Study Sessions
+			protected.POST("/decks/:id/study/start", handlers.StartStudySession(db))
+			protected.POST("/study-sessions/:id/review", handlers.ReviewFlashcard(db))
+			protected.POST("/study-sessions/:id/complete", handlers.CompleteStudySession(db))
 		}
 
 		// Admin routes

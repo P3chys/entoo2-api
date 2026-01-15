@@ -11,7 +11,9 @@ type ActivityType string
 
 const (
 	ActivityDocumentUploaded ActivityType = "document_uploaded"
-	ActivityDocumentDeleted  ActivityType = "document_deleted"
+	ActivityDocumentDeleted        ActivityType = "document_deleted"
+	ActivityFlashcardDeckCreated   ActivityType = "flashcard_deck_created"
+	ActivityFlashcardStudyCompleted ActivityType = "flashcard_study_completed"
 )
 
 type Activity struct {

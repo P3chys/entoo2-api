@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"log"
 	"strings"
 
 	"github.com/P3chys/entoo2-api/internal/config"
@@ -13,6 +14,7 @@ import (
 func AuthRequired(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
+		log.Printf("[DEBUG AUTH] Path: %s, AuthHeader: %s", c.Request.URL.Path, authHeader)
 		if authHeader == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,

@@ -1,11 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(go*)",
-      "Bash(make*)",
-      "Bash(docker*)",
-      "Bash(git*)",
-      "Bash(gh*)",
+      "Bash(go *)",
+      "Bash(make *)",
+      "Bash(docker *)",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(npm *)",
+      "Bash(curl *)",
       "Read",
       "Write",
       "Edit",
@@ -14,7 +16,9 @@
     ],
     "deny": [
       "Bash(rm -rf /*)",
-      "Bash(*--force*push*main*)"
+      "Bash(rm -rf /)",
+      "Bash(*--force*push*main*)",
+      "Bash(*--force*push*master*)"
     ]
   }
 }

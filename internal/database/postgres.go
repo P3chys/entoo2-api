@@ -163,6 +163,64 @@ func RunMigrations(db *gorm.DB) error {
 		UpdatedAt        time.Time
 	}
 
+	type FlashcardDeck struct {
+		ID          string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+		SubjectID   string    `gorm:"type:uuid;not null;index"`
+		CreatedBy   string    `gorm:"type:uuid;not null;index"`
+		Title       string    `gorm:"size:200;not null"`
+		Description string    `gorm:"type:text"`
+		IsPublic    bool      `gorm:"default:false"`
+		CreatedAt   time.Time `gorm:"index"`
+		UpdatedAt   time.Time
+	}
+
+	type Flashcard struct {
+		ID         string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+		DeckID     string    `gorm:"type:uuid;not null;index"`
+		FrontText  string    `gorm:"type:text;not null"`
+		BackText   string    `gorm:"type:text;not null"`
+		OrderIndex int       `gorm:"not null;default:0;index"`
+		CreatedAt  time.Time
+		UpdatedAt  time.Time
+	}
+
+	type UserFlashcardProgress struct {
+		ID             string     `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+		UserID         string     `gorm:"type:uuid;not null;index"`
+		FlashcardID    string     `gorm:"type:uuid;not null;index"`
+		DeckID         string     `gorm:"type:uuid;not null;index"`
+		EaseFactor     float64    `gorm:"default:2.5"`
+		Interval       int        `gorm:"default:0"`
+		Repetitions    int        `gorm:"default:0"`
+		NextReviewDate *time.Time `gorm:"index"`
+		LastReviewedAt *time.Time
+		TotalReviews   int        `gorm:"default:0"`
+		CorrectReviews int        `gorm:"default:0"`
+		CreatedAt      time.Time
+		UpdatedAt      time.Time
+	}
+
+	type FlashcardStudySession struct {
+		ID              string     `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+		UserID          string     `gorm:"type:uuid;not null;index"`
+		DeckID          string     `gorm:"type:uuid;not null;index"`
+		CardsStudied    int        `gorm:"default:0"`
+		CardsCorrect    int        `gorm:"default:0"`
+		DurationSeconds int        `gorm:"default:0"`
+		StartedAt       time.Time  `gorm:"index"`
+		CompletedAt     *time.Time
+		CreatedAt       time.Time
+	}
+
+	type FlashcardReview struct {
+		ID          string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+		SessionID   string    `gorm:"type:uuid;not null;index"`
+		FlashcardID string    `gorm:"type:uuid;not null;index"`
+		UserID      string    `gorm:"type:uuid;not null;index"`
+		Quality     int       `gorm:"not null;check:quality >= 0 AND quality <= 5"`
+		CreatedAt   time.Time `gorm:"index"`
+	}
+
 	// Drop English language columns if they exist
 	// This is a one-time migration to remove English fields from the database
 	if err := dropEnglishColumns(db); err != nil {
@@ -171,7 +229,7 @@ func RunMigrations(db *gorm.DB) error {
 	}
 
 	// Auto-migrate all models
-	err := db.AutoMigrate(&User{}, &Semester{}, &Subject{}, &SubjectTeacher{}, &DocumentCategory{}, &Document{}, &Activity{}, &Comment{}, &Question{}, &Answer{}, &TeacherRating{})
+	err := db.AutoMigrate(&User{}, &Semester{}, &Subject{}, &SubjectTeacher{}, &DocumentCategory{}, &Document{}, &Activity{}, &Comment{}, &Question{}, &Answer{}, &TeacherRating{}, &FlashcardDeck{}, &Flashcard{}, &UserFlashcardProgress{}, &FlashcardStudySession{}, &FlashcardReview{})
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
@@ -183,6 +241,41 @@ func RunMigrations(db *gorm.DB) error {
 	`).Error; err != nil {
 		log.Printf("Warning: Failed to create unique constraint on teacher_ratings: %v", err)
 		// Continue anyway as constraint might already exist
+	}
+
+	// Add unique constraint for user flashcard progress (one progress record per user per flashcard)
+	if err := db.Exec(`
+		CREATE UNIQUE INDEX IF NOT EXISTS unique_user_flashcard_progress
+		ON user_flashcard_progress(user_id, flashcard_id)
+	`).Error; err != nil {
+		log.Printf("Warning: Failed to create unique constraint on user_flashcard_progress: %v", err)
+	}
+
+	// Add unique constraint for flashcard order within deck
+	if err := db.Exec(`
+		CREATE UNIQUE INDEX IF NOT EXISTS unique_deck_card_order
+		ON flashcards(deck_id, order_index)
+	`).Error; err != nil {
+		log.Printf("Warning: Failed to create unique constraint on flashcards: %v", err)
+	}
+
+	// Add composite index for deck queries
+	if err := db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_deck_subject_creator
+		ON flashcard_decks(subject_id, created_by)
+	`).Error; err != nil {
+		log.Printf("Warning: Failed to create composite index on flashcard_decks: %v", err)
+	}
+
+	// Add many-to-many table for deck favorites
+	if err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS user_favorite_decks (
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			flashcard_deck_id UUID REFERENCES flashcard_decks(id) ON DELETE CASCADE,
+			PRIMARY KEY (user_id, flashcard_deck_id)
+		)
+	`).Error; err != nil {
+		log.Printf("Warning: Failed to create user_favorite_decks table: %v", err)
 	}
 
 	log.Println("Migrations completed successfully")

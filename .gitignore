@@ -47,3 +47,5 @@ logs/
 # Air (hot reload)
 .air.toml
 tmp/
+.claude/skills/test.md
+.claude/skills/lint.md
