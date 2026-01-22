@@ -212,7 +212,7 @@ func CreateSubject(db *gorm.DB) gin.HandlerFunc {
 		userUUID, _ := uuid.Parse(userID.(string))
 
 		// Auto-create "Unassigned" categories for each document type
-		types := []string{"lecture", "seminar", "other"}
+		types := []string{"lecture", "seminar", "other", "exam"}
 		for i, docType := range types {
 			category := models.DocumentCategory{
 				SubjectID:  subject.ID,

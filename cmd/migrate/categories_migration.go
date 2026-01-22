@@ -72,7 +72,7 @@ func MigrateDocumentCategories(db *gorm.DB) error {
 		adminUser.ID = uuid.MustParse("00000000-0000-0000-0000-000000000000")
 	}
 
-	types := []string{"lecture", "seminar", "other"}
+	types := []string{"lecture", "seminar", "other", "exam"}
 	categoriesCreated := 0
 
 	for _, subject := range subjects {

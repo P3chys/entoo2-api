@@ -22,6 +22,7 @@ var AllowedMimeTypes = map[string]bool{
 	"application/pdf":                                true,
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true, // docx
 	"application/vnd.openxmlformats-officedocument.presentationml.presentation": true, // pptx
+	"application/vnd.ms-powerpoint": true, // ppt (legacy PowerPoint format)
 	"image/jpeg":             true,
 	"image/png":              true,
 	"text/plain":             true,
@@ -53,8 +54,8 @@ func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageSe
 		if docType == "" {
 			docType = "other"
 		}
-		if docType != "lecture" && docType != "seminar" && docType != "other" {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid type. Must be lecture, seminar, or other"})
+		if docType != "lecture" && docType != "seminar" && docType != "other" && docType != "exam" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid type. Must be lecture, seminar, other, or exam"})
 			return
 		}
 
@@ -340,8 +341,9 @@ func Search(search *services.SearchService) gin.HandlerFunc {
 }
 
 func IsTextExtractable(mimeType string) bool {
-	return mimeType == "application/pdf" || 
-		mimeType == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || 
+	return mimeType == "application/pdf" ||
+		mimeType == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
 		mimeType == "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+		mimeType == "application/vnd.ms-powerpoint" ||
 		strings.HasPrefix(mimeType, "text/")
 }

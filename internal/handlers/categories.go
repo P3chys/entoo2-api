@@ -12,7 +12,7 @@ import (
 
 // CreateCategoryRequest defines the request body for creating a category
 type CreateCategoryRequest struct {
-	Type   string `json:"type" binding:"required,oneof=lecture seminar other"`
+	Type   string `json:"type" binding:"required,oneof=lecture seminar other exam"`
 	NameCS string `json:"name_cs" binding:"required,max=200"`
 	NameEN string `json:"name_en" binding:"omitempty,max=200"`
 }
@@ -149,7 +149,7 @@ func ListCategories(db *gorm.DB) gin.HandlerFunc {
 
 		query := db.Where("subject_id = ?", subjectUUID)
 		if categoryType != "" {
-			if categoryType != "lecture" && categoryType != "seminar" && categoryType != "other" {
+			if categoryType != "lecture" && categoryType != "seminar" && categoryType != "other" && categoryType != "exam" {
 				c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid type"})
 				return
 			}
