@@ -173,19 +173,36 @@ func CreateAnswer(db *gorm.DB, cfg *config.Config, storage *services.StorageServ
 			}
 
 			docID := uuid.New()
+
+			// Find the "Ostatní" (Other) type for this subject
+			var otherType models.DocumentType
+			if err := db.Where("subject_id = ? AND name_cs = ?", question.SubjectID, "Ostatní").First(&otherType).Error; err != nil {
+				// If no "Ostatní" type exists, try to find any type for this subject
+				if err := db.Where("subject_id = ?", question.SubjectID).Order("order_index DESC").First(&otherType).Error; err != nil {
+					// Create a default type if none exists
+					otherType = models.DocumentType{
+						SubjectID:  question.SubjectID,
+						NameCS:     "Ostatní",
+							Icon:       "folder",
+						OrderIndex: 99,
+					}
+					db.Create(&otherType)
+				}
+			}
+
 			// Link document to the Subject of the Question
 			document := models.Document{
 				ID:           docID,
 				SubjectID:    question.SubjectID, // Link to subject so it appears in main list
 				UploadedBy:   userID,
-				Type:         "other", // Documents attached to answers are categorized as 'other'
+				TypeID:       &otherType.ID, // Documents attached to answers use the "Ostatní" type
 				Filename:     newFilename,
 				OriginalName: header.Filename,
 				FileSize:     header.Size,
 				MimeType:     mimeType,
 				MinIOPath:    newFilename,
 				ContentText:  extractedText,
-				// AnswerID will be set after creating Answer? Or we set it here if we had the Answer ID. 
+				// AnswerID will be set after creating Answer? Or we set it here if we had the Answer ID.
 				// Circular diff. Let's create doc first.
 			}
 

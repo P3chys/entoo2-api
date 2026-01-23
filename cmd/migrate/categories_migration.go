@@ -88,7 +88,6 @@ func MigrateDocumentCategories(db *gorm.DB) error {
 					SubjectID:  subject.ID,
 					Type:       docType,
 					NameCS:     "Nepřiřazeno",
-					NameEN:     "Unassigned",
 					OrderIndex: 999, // Put at end
 					CreatedBy:  adminUser.ID,
 				}

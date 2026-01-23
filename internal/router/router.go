@@ -23,11 +23,27 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	searchService := services.NewSearchService(cfg)
 	activityService := services.NewActivityService(db)
 	emailService := services.NewEmailService(cfg)
+	statsService, err := services.NewStatsService(db, cfg)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize stats service: %v. Stats will be unavailable.", err)
+	}
 
 	// Initialize rate limiter
 	rateLimiter, err := middleware.NewRateLimiter(cfg.RedisURL)
 	if err != nil {
 		log.Printf("Warning: Failed to initialize rate limiter: %v. Rate limiting will be disabled.", err)
+	}
+
+	// Initialize analytics middleware
+	analytics, err := middleware.NewAnalytics(cfg.RedisURL)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize analytics: %v. API tracking will be disabled.", err)
+	}
+
+	// Initialize active user tracker
+	activeUserTracker, err := middleware.NewActiveUserTracker(cfg.RedisURL)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize active user tracker: %v. Active user tracking will be disabled.", err)
 	}
 
 	// Set Gin mode
@@ -49,6 +65,12 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 	// API v1 routes
 	api := r.Group("/api/v1")
+
+	// Add analytics middleware if available
+	if analytics != nil {
+		api.Use(analytics.TrackRequests())
+	}
+
 	{
 		// Public routes
 		auth := api.Group("/auth")
@@ -79,6 +101,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		// Protected routes
 		protected := api.Group("")
 		protected.Use(middleware.AuthRequired(cfg))
+		if activeUserTracker != nil {
+			protected.Use(activeUserTracker.TrackActiveUsers())
+		}
 		{
 			// Auth
 			protected.GET("/auth/me", handlers.GetCurrentUser(db))
@@ -100,6 +125,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			protected.GET("/documents/:id", handlers.GetDocument(db))
 			protected.GET("/documents/:id/download", handlers.DownloadDocument(db, storageService, activityService))
 			protected.DELETE("/documents/:id", handlers.DeleteDocument(db, storageService, searchService, activityService))
+
+			// Document Types
+			protected.GET("/subjects/:id/types", handlers.ListDocumentTypes(db))
 
 			// Categories
 			protected.GET("/subjects/:id/categories", handlers.ListCategories(db))
@@ -156,6 +184,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		// Admin routes
 		admin := api.Group("/admin")
 		admin.Use(middleware.AuthRequired(cfg), middleware.AdminRequired())
+		if activeUserTracker != nil {
+			admin.Use(activeUserTracker.TrackActiveUsers())
+		}
 		{
 			// Semester management
 			admin.POST("/semesters", handlers.CreateSemester(db))
@@ -167,11 +198,26 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			admin.PUT("/subjects/:id", handlers.UpdateSubject(db))
 			admin.DELETE("/subjects/:id", handlers.DeleteSubject(db))
 
+			// Document Type management
+			admin.POST("/subjects/:id/types", handlers.CreateDocumentType(db))
+			admin.PUT("/types/:id", handlers.UpdateDocumentType(db))
+			admin.DELETE("/types/:id", handlers.DeleteDocumentType(db))
+			admin.PUT("/types/reorder", handlers.ReorderDocumentTypes(db))
+
 			// Category management
 			admin.POST("/subjects/:id/categories", handlers.CreateCategory(db))
 			admin.PUT("/categories/:id", handlers.UpdateCategory(db))
 			admin.DELETE("/categories/:id", handlers.DeleteCategory(db))
 			admin.PUT("/categories/reorder", handlers.ReorderCategories(db))
+
+			// Stats/Dashboard routes
+			if statsService != nil {
+				admin.GET("/stats/overview", handlers.GetStatsOverview(statsService))
+				admin.GET("/stats/users", handlers.GetUserStats(statsService))
+				admin.GET("/stats/api", handlers.GetAPIStats(statsService))
+				admin.GET("/stats/activity", handlers.GetActivityStats(statsService))
+				admin.GET("/stats/system", handlers.GetSystemStats(statsService))
+			}
 		}
 	}
 

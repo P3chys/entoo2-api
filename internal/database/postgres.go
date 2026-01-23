@@ -61,13 +61,22 @@ func RunMigrations(db *gorm.DB) error {
 		CreatedAt   time.Time
 	}
 
+	type DocumentType struct {
+		ID         string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+		SubjectID  string    `gorm:"type:uuid;not null;index:idx_doctype_subject"`
+		NameCS     string    `gorm:"size:100;not null"`
+		Icon       string    `gorm:"size:50;default:'folder'"`
+		OrderIndex int       `gorm:"not null;default:0;index:idx_doctype_order"`
+		CreatedAt  time.Time
+		UpdatedAt  time.Time
+	}
+
 	type DocumentCategory struct {
 		ID         string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-		SubjectID  string    `gorm:"type:uuid;not null;index:idx_subject_type"`
-		Type       string    `gorm:"size:20;not null;index:idx_subject_type"`
+		SubjectID  string    `gorm:"type:uuid;not null;index:idx_category_subject"`
+		TypeID     *string   `gorm:"type:uuid;index:idx_category_type;default:null"` // Nullable for migration
 		NameCS     string    `gorm:"size:200;not null"`
-		NameEN     string    `gorm:"size:200;not null"`
-		OrderIndex int       `gorm:"not null;default:0;index:idx_order"`
+		OrderIndex int       `gorm:"not null;default:0;index:idx_category_order"`
 		CreatedBy  string    `gorm:"type:uuid;not null"`
 		CreatedAt  time.Time
 		UpdatedAt  time.Time
@@ -78,7 +87,7 @@ func RunMigrations(db *gorm.DB) error {
 		SubjectID    string    `gorm:"type:uuid;not null;index"`
 		UploadedBy   string    `gorm:"type:uuid;not null;index"`
 		AnswerID     *string   `gorm:"type:uuid;index"`
-		Type         string    `gorm:"size:20;default:'other'"`
+		TypeID       *string   `gorm:"type:uuid;index;default:null"` // Nullable for migration
 		CategoryID   *string   `gorm:"type:uuid;index"`
 		Filename     string    `gorm:"size:255;not null"`
 		OriginalName string    `gorm:"size:255;not null"`
@@ -228,10 +237,15 @@ func RunMigrations(db *gorm.DB) error {
 		// Continue anyway as columns might already be dropped
 	}
 
-	// Auto-migrate all models
-	err := db.AutoMigrate(&User{}, &Semester{}, &Subject{}, &SubjectTeacher{}, &DocumentCategory{}, &Document{}, &Activity{}, &Comment{}, &Question{}, &Answer{}, &TeacherRating{}, &FlashcardDeck{}, &Flashcard{}, &UserFlashcardProgress{}, &FlashcardStudySession{}, &FlashcardReview{})
+	// Auto-migrate all models first (this creates the type_id columns)
+	err := db.AutoMigrate(&User{}, &Semester{}, &Subject{}, &SubjectTeacher{}, &DocumentType{}, &DocumentCategory{}, &Document{}, &Activity{}, &Comment{}, &Question{}, &Answer{}, &TeacherRating{}, &FlashcardDeck{}, &Flashcard{}, &UserFlashcardProgress{}, &FlashcardStudySession{}, &FlashcardReview{})
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+
+	// Migrate from old type string to new type_id foreign key (after columns exist)
+	if err := migrateDocumentTypes(db); err != nil {
+		log.Printf("Warning: Failed to migrate document types: %v", err)
 	}
 
 	// Add unique constraint for teacher ratings (one rating per user per teacher)
@@ -296,6 +310,8 @@ func dropEnglishColumns(db *gorm.DB) error {
 		{"subjects", "name_en"},
 		{"subjects", "description_en"},
 		{"subject_teachers", "topic_en"},
+		{"document_types", "name_en"},
+		{"document_categories", "name_en"},
 	}
 
 	for _, m := range migrations {
@@ -330,3 +346,104 @@ func dropEnglishColumns(db *gorm.DB) error {
 	log.Println("English language columns dropped successfully")
 	return nil
 }
+
+// migrateDocumentTypes migrates from old type string to new document_types table
+func migrateDocumentTypes(db *gorm.DB) error {
+	log.Println("Checking document types migration...")
+
+	// Check if old 'type' column exists on document_categories
+	var typeColumnExists bool
+	query := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM information_schema.columns
+			WHERE table_name = 'document_categories'
+			AND column_name = 'type'
+		)
+	`
+	if err := db.Raw(query).Scan(&typeColumnExists).Error; err != nil {
+		return fmt.Errorf("failed to check if type column exists: %w", err)
+	}
+
+	if !typeColumnExists {
+		log.Println("Document types already migrated, skipping")
+		return nil
+	}
+
+	log.Println("Migrating document types...")
+
+	// Get all unique subject IDs
+	var subjectIDs []string
+	if err := db.Raw("SELECT DISTINCT id FROM subjects").Scan(&subjectIDs).Error; err != nil {
+		return fmt.Errorf("failed to get subjects: %w", err)
+	}
+
+	// Default types mapping
+	defaultTypes := []struct {
+		OldType string
+		NameCS  string
+		Icon    string
+		Order   int
+	}{
+		{"lecture", "Přednášky", "book-open", 0},
+		{"seminar", "Cvičení", "users", 1},
+		{"exam", "Testy/Klauzury", "file-text", 2},
+		{"other", "Ostatní", "folder", 3},
+	}
+
+	for _, subjectID := range subjectIDs {
+		// Create document types for this subject and update references in one transaction
+		for _, dt := range defaultTypes {
+			// Insert new document type and get its ID
+			var newTypeID string
+			if err := db.Raw(`
+				INSERT INTO document_types (id, subject_id, name_cs, icon, order_index, created_at, updated_at)
+				VALUES (gen_random_uuid(), ?, ?, ?, ?, NOW(), NOW())
+				RETURNING id
+			`, subjectID, dt.NameCS, dt.Icon, dt.Order).Scan(&newTypeID).Error; err != nil {
+				log.Printf("Warning: Failed to create document type for subject %s: %v", subjectID, err)
+				continue
+			}
+
+			// Update document_categories to use type_id
+			if err := db.Exec(`
+				UPDATE document_categories
+				SET type_id = ?
+				WHERE subject_id = ? AND type = ?
+			`, newTypeID, subjectID, dt.OldType).Error; err != nil {
+				log.Printf("Warning: Failed to update categories for subject %s, type %s: %v", subjectID, dt.OldType, err)
+			}
+
+			// Update documents to use type_id
+			if err := db.Exec(`
+				UPDATE documents
+				SET type_id = ?
+				WHERE subject_id = ? AND type = ?
+			`, newTypeID, subjectID, dt.OldType).Error; err != nil {
+				log.Printf("Warning: Failed to update documents for subject %s, type %s: %v", subjectID, dt.OldType, err)
+			}
+		}
+	}
+
+	// Drop old type columns
+	log.Println("Dropping old type columns...")
+	if err := db.Exec("ALTER TABLE document_categories DROP COLUMN IF EXISTS type").Error; err != nil {
+		log.Printf("Warning: Failed to drop type column from document_categories: %v", err)
+	}
+	if err := db.Exec("ALTER TABLE documents DROP COLUMN IF EXISTS type").Error; err != nil {
+		log.Printf("Warning: Failed to drop type column from documents: %v", err)
+	}
+
+	// Add NOT NULL constraint to type_id columns after migration
+	log.Println("Adding NOT NULL constraints to type_id columns...")
+	if err := db.Exec("ALTER TABLE document_categories ALTER COLUMN type_id SET NOT NULL").Error; err != nil {
+		log.Printf("Warning: Failed to add NOT NULL to document_categories.type_id: %v", err)
+	}
+	if err := db.Exec("ALTER TABLE documents ALTER COLUMN type_id SET NOT NULL").Error; err != nil {
+		log.Printf("Warning: Failed to add NOT NULL to documents.type_id: %v", err)
+	}
+
+	log.Println("Document types migration completed")
+	return nil
+}
+

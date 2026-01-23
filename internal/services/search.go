@@ -90,7 +90,7 @@ func NewSearchService(cfg *config.Config) *SearchService {
 	}
 
 	// Configure sortable attributes for subjects
-	_, err = subIndex.UpdateSortableAttributes(&[]string{"name_cs", "name_en", "created_at", "credits"})
+	_, err = subIndex.UpdateSortableAttributes(&[]string{"name_cs", "created_at", "credits"})
 	if err != nil {
 		log.Printf("Failed to update subjects sortable attributes: %v", err)
 	}
@@ -98,10 +98,8 @@ func NewSearchService(cfg *config.Config) *SearchService {
 	// Configure searchable attributes for subjects with priorities
 	_, err = subIndex.UpdateSearchableAttributes(&[]string{
 		"code",           // Highest priority (exact course codes)
-		"name_en",        // Second priority
-		"name_cs",        // Third priority
-		"description_en", // Fourth priority
-		"description_cs", // Fifth priority
+		"name_cs",        // Second priority
+		"description_cs", // Third priority
 	})
 	if err != nil {
 		log.Printf("Failed to update subjects searchable attributes: %v", err)
@@ -197,10 +195,10 @@ func (s *SearchService) DeleteSubject(subjectID string) error {
 func (s *SearchService) SearchSubjects(query string, semesterID string, exactMatch bool) (*meilisearch.SearchResponse, error) {
 	request := &meilisearch.SearchRequest{
 		Limit:                    100,
-		AttributesToHighlight:    []string{"name_cs", "name_en", "description_cs", "description_en", "code"},
+		AttributesToHighlight:    []string{"name_cs", "description_cs", "code"},
 		HighlightPreTag:          "<mark>",
 		HighlightPostTag:         "</mark>",
-		AttributesToCrop:         []string{"description_cs", "description_en"},
+		AttributesToCrop:         []string{"description_cs"},
 		CropLength:               200,
 		ShowMatchesPosition:      true,
 	}

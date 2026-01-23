@@ -49,13 +49,15 @@ func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageSe
 		}
 		defer file.Close()
 
-		// Get and validate type (formerly category)
-		docType := c.Request.FormValue("type")
-		if docType == "" {
-			docType = "other"
+		// Get and validate type_id (DocumentType UUID)
+		typeIDStr := c.Request.FormValue("type_id")
+		if typeIDStr == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "type_id is required"})
+			return
 		}
-		if docType != "lecture" && docType != "seminar" && docType != "other" && docType != "exam" {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid type. Must be lecture, seminar, other, or exam"})
+		typeUUID, err := uuid.Parse(typeIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid type_id format"})
 			return
 		}
 
@@ -88,6 +90,17 @@ func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageSe
 			return
 		}
 
+		// Verify document type exists and belongs to subject
+		var docType models.DocumentType
+		if err := db.Where("id = ? AND subject_id = ?", typeUUID, subjectUUID).First(&docType).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid type for this subject"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database error"})
+			}
+			return
+		}
+
 		// Validate and assign category
 		if categoryIDStr != "" {
 			catUUID, err := uuid.Parse(categoryIDStr)
@@ -98,7 +111,7 @@ func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageSe
 
 			// Verify category exists, belongs to subject, and matches type
 			var category models.DocumentCategory
-			if err := db.Where("id = ? AND subject_id = ? AND type = ?", catUUID, subjectUUID, docType).First(&category).Error; err != nil {
+			if err := db.Where("id = ? AND subject_id = ? AND type_id = ?", catUUID, subjectUUID, typeUUID).First(&category).Error; err != nil {
 				if err == gorm.ErrRecordNotFound {
 					c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid category for this subject and type"})
 				} else {
@@ -110,9 +123,8 @@ func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageSe
 		} else {
 			// Auto-assign to "Unassigned" category
 			var unassignedCategory models.DocumentCategory
-			if err := db.Where("subject_id = ? AND type = ? AND name_cs = ?", subjectUUID, docType, "Nepřiřazeno").First(&unassignedCategory).Error; err != nil {
+			if err := db.Where("subject_id = ? AND type_id = ? AND name_cs = ?", subjectUUID, typeUUID, "Nepřiřazeno").First(&unassignedCategory).Error; err != nil {
 				// If no unassigned category exists, continue without category_id (will be NULL)
-				// This handles the case where migration hasn't run yet
 				categoryID = nil
 			} else {
 				categoryID = &unassignedCategory.ID
@@ -146,7 +158,7 @@ func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageSe
 			ID:           docID,
 			SubjectID:    subjectUUID,
 			UploadedBy:   userUUID,
-			Type:         docType,
+			TypeID:       &typeUUID,
 			CategoryID:   categoryID,
 			Filename:     newFilename,
 			OriginalName: header.Filename,

@@ -12,15 +12,13 @@ import (
 
 // CreateCategoryRequest defines the request body for creating a category
 type CreateCategoryRequest struct {
-	Type   string `json:"type" binding:"required,oneof=lecture seminar other exam"`
+	TypeID string `json:"type_id" binding:"required,uuid"` // UUID of DocumentType
 	NameCS string `json:"name_cs" binding:"required,max=200"`
-	NameEN string `json:"name_en" binding:"omitempty,max=200"`
 }
 
 // UpdateCategoryRequest defines the request body for updating a category
 type UpdateCategoryRequest struct {
 	NameCS     *string `json:"name_cs" binding:"omitempty,max=200"`
-	NameEN     *string `json:"name_en" binding:"omitempty,max=200"`
 	OrderIndex *int    `json:"order_index"`
 }
 
@@ -77,16 +75,28 @@ func CreateCategory(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Check for duplicate category name within the same subject and type
-		var existingCategory models.DocumentCategory
-		query := db.Where("subject_id = ? AND type = ? AND name_cs = ?", subjectUUID, req.Type, req.NameCS)
-
-		// Only check name_en if it's provided
-		if req.NameEN != "" {
-			query = query.Or("subject_id = ? AND type = ? AND name_en = ?", subjectUUID, req.Type, req.NameEN)
+		// Parse TypeID
+		typeUUID, err := uuid.Parse(req.TypeID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid type ID"})
+			return
 		}
 
-		err = query.First(&existingCategory).Error
+		// Verify type exists and belongs to this subject
+		var docType models.DocumentType
+		if err := db.Where("id = ? AND subject_id = ?", typeUUID, subjectUUID).First(&docType).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Document type not found for this subject"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database error"})
+			}
+			return
+		}
+
+		// Check for duplicate category name within the same subject and type
+		var existingCategory models.DocumentCategory
+		err = db.Where("subject_id = ? AND type_id = ? AND name_cs = ?", subjectUUID, typeUUID, req.NameCS).
+			First(&existingCategory).Error
 
 		if err == nil {
 			c.JSON(http.StatusConflict, gin.H{
@@ -102,16 +112,15 @@ func CreateCategory(db *gorm.DB) gin.HandlerFunc {
 		// Get next order index
 		var maxOrder int
 		db.Model(&models.DocumentCategory{}).
-			Where("subject_id = ? AND type = ?", subjectUUID, req.Type).
+			Where("subject_id = ? AND type_id = ?", subjectUUID, typeUUID).
 			Select("COALESCE(MAX(order_index), -1)").
 			Scan(&maxOrder)
 
 		// Create category
 		category := models.DocumentCategory{
 			SubjectID:  subjectUUID,
-			Type:       req.Type,
+			TypeID:     &typeUUID,
 			NameCS:     req.NameCS,
-			NameEN:     req.NameEN,
 			OrderIndex: maxOrder + 1,
 			CreatedBy:  userUUID,
 		}
@@ -144,20 +153,21 @@ func ListCategories(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Optional filter by type
-		categoryType := c.Query("type")
+		// Optional filter by type_id
+		typeID := c.Query("type_id")
 
 		query := db.Where("subject_id = ?", subjectUUID)
-		if categoryType != "" {
-			if categoryType != "lecture" && categoryType != "seminar" && categoryType != "other" && categoryType != "exam" {
-				c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid type"})
+		if typeID != "" {
+			typeUUID, err := uuid.Parse(typeID)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid type ID"})
 				return
 			}
-			query = query.Where("type = ?", categoryType)
+			query = query.Where("type_id = ?", typeUUID)
 		}
 
 		var categories []models.DocumentCategory
-		if err := query.Order("order_index ASC, created_at ASC").Find(&categories).Error; err != nil {
+		if err := query.Preload("Type").Order("order_index ASC, created_at ASC").Find(&categories).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to fetch categories"})
 			return
 		}
@@ -204,8 +214,8 @@ func UpdateCategory(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Prevent editing "Unassigned" category names
-		if category.NameCS == "Nepřiřazeno" || category.NameEN == "Unassigned" {
-			if req.NameCS != nil || req.NameEN != nil {
+		if category.NameCS == "Nepřiřazeno" {
+			if req.NameCS != nil {
 				c.JSON(http.StatusForbidden, gin.H{
 					"success": false,
 					"error":   "Cannot rename the 'Unassigned' category",
@@ -218,9 +228,6 @@ func UpdateCategory(db *gorm.DB) gin.HandlerFunc {
 		updates := make(map[string]interface{})
 		if req.NameCS != nil {
 			updates["name_cs"] = *req.NameCS
-		}
-		if req.NameEN != nil {
-			updates["name_en"] = *req.NameEN
 		}
 		if req.OrderIndex != nil {
 			updates["order_index"] = *req.OrderIndex
@@ -274,7 +281,7 @@ func DeleteCategory(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Prevent deleting "Unassigned" category
-		if category.NameCS == "Nepřiřazeno" || category.NameEN == "Unassigned" {
+		if category.NameCS == "Nepřiřazeno" {
 			c.JSON(http.StatusForbidden, gin.H{
 				"success": false,
 				"error":   "Cannot delete the 'Unassigned' category",
@@ -284,8 +291,8 @@ func DeleteCategory(db *gorm.DB) gin.HandlerFunc {
 
 		// Find the "Unassigned" category for this subject and type
 		var unassignedCategory models.DocumentCategory
-		err = db.Where("subject_id = ? AND type = ? AND name_cs = ?",
-			category.SubjectID, category.Type, "Nepřiřazeno").First(&unassignedCategory).Error
+		err = db.Where("subject_id = ? AND type_id = ? AND name_cs = ?",
+			category.SubjectID, category.TypeID, "Nepřiřazeno").First(&unassignedCategory).Error
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
