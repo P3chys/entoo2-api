@@ -237,6 +237,11 @@ func RunMigrations(db *gorm.DB) error {
 		// Continue anyway as columns might already be dropped
 	}
 
+	// Ensure flashcard columns exist (GORM AutoMigrate may miss these)
+	db.Exec(`ALTER TABLE flashcards ADD COLUMN IF NOT EXISTS card_type VARCHAR(20) DEFAULT 'standard'`)
+	db.Exec(`ALTER TABLE flashcards ADD COLUMN IF NOT EXISTS options TEXT DEFAULT ''`)
+	db.Exec(`ALTER TABLE flashcards ADD COLUMN IF NOT EXISTS correct_option INTEGER DEFAULT -1`)
+
 	// Auto-migrate all models first (this creates the type_id columns)
 	err := db.AutoMigrate(&User{}, &Semester{}, &Subject{}, &SubjectTeacher{}, &DocumentType{}, &DocumentCategory{}, &Document{}, &Activity{}, &Comment{}, &Question{}, &Answer{}, &TeacherRating{}, &FlashcardDeck{}, &Flashcard{}, &UserFlashcardProgress{}, &FlashcardStudySession{}, &FlashcardReview{})
 	if err != nil {
