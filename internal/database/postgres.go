@@ -237,10 +237,30 @@ func RunMigrations(db *gorm.DB) error {
 		// Continue anyway as columns might already be dropped
 	}
 
-	// Ensure flashcard columns exist (GORM AutoMigrate may miss these)
+	// Ensure flashcard columns exist (GORM AutoMigrate may miss these on existing tables)
 	db.Exec(`ALTER TABLE flashcards ADD COLUMN IF NOT EXISTS card_type VARCHAR(20) DEFAULT 'standard'`)
 	db.Exec(`ALTER TABLE flashcards ADD COLUMN IF NOT EXISTS options TEXT DEFAULT ''`)
 	db.Exec(`ALTER TABLE flashcards ADD COLUMN IF NOT EXISTS correct_option INTEGER DEFAULT -1`)
+
+	// Ensure user_flashcard_progress table exists (GORM AutoMigrate may fail to create it)
+	db.Exec(`CREATE TABLE IF NOT EXISTS user_flashcard_progress (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		user_id UUID NOT NULL REFERENCES users(id),
+		flashcard_id UUID NOT NULL REFERENCES flashcards(id),
+		deck_id UUID NOT NULL REFERENCES flashcard_decks(id),
+		ease_factor DOUBLE PRECISION DEFAULT 2.5,
+		interval INTEGER DEFAULT 0,
+		repetitions INTEGER DEFAULT 0,
+		next_review_date TIMESTAMPTZ,
+		last_reviewed_at TIMESTAMPTZ,
+		total_reviews INTEGER DEFAULT 0,
+		correct_reviews INTEGER DEFAULT 0,
+		created_at TIMESTAMPTZ DEFAULT NOW(),
+		updated_at TIMESTAMPTZ DEFAULT NOW()
+	)`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_user_flashcard_progress_user ON user_flashcard_progress(user_id)`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_user_flashcard_progress_flashcard ON user_flashcard_progress(flashcard_id)`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_user_flashcard_progress_deck ON user_flashcard_progress(deck_id)`)
 
 	// Auto-migrate all models first (this creates the type_id columns)
 	err := db.AutoMigrate(&User{}, &Semester{}, &Subject{}, &SubjectTeacher{}, &DocumentType{}, &DocumentCategory{}, &Document{}, &Activity{}, &Comment{}, &Question{}, &Answer{}, &TeacherRating{}, &FlashcardDeck{}, &Flashcard{}, &UserFlashcardProgress{}, &FlashcardStudySession{}, &FlashcardReview{})
