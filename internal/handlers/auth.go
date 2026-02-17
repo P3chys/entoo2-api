@@ -129,11 +129,12 @@ func Register(db *gorm.DB, cfg *config.Config, emailService *services.EmailServi
 			return
 		}
 
-		// Send verification email
-		if err := emailService.SendVerificationEmail(user.Email, plainToken, user.Language); err != nil {
-			log.Printf("Failed to send verification email to %s: %v", user.Email, err)
-			// Don't fail registration if email fails - user can request resend
-		}
+		// Send verification email asynchronously so registration doesn't block
+		go func() {
+			if err := emailService.SendVerificationEmail(user.Email, plainToken, user.Language); err != nil {
+				log.Printf("Failed to send verification email to %s: %v", user.Email, err)
+			}
+		}()
 
 		c.JSON(http.StatusCreated, gin.H{
 			"success": true,
@@ -369,10 +370,12 @@ func RequestEmailVerification(db *gorm.DB, cfg *config.Config, emailService *ser
 			return
 		}
 
-		// Send verification email
-		if err := emailService.SendVerificationEmail(user.Email, plainToken, user.Language); err != nil {
-			log.Printf("Failed to send verification email to %s: %v", user.Email, err)
-		}
+		// Send verification email asynchronously
+		go func() {
+			if err := emailService.SendVerificationEmail(user.Email, plainToken, user.Language); err != nil {
+				log.Printf("Failed to send verification email to %s: %v", user.Email, err)
+			}
+		}()
 
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
@@ -552,10 +555,12 @@ func RequestPasswordReset(db *gorm.DB, cfg *config.Config, emailService *service
 			return
 		}
 
-		// Send password reset email
-		if err := emailService.SendPasswordResetEmail(user.Email, plainToken, user.Language); err != nil {
-			log.Printf("Failed to send password reset email to %s: %v", user.Email, err)
-		}
+		// Send password reset email asynchronously
+		go func() {
+			if err := emailService.SendPasswordResetEmail(user.Email, plainToken, user.Language); err != nil {
+				log.Printf("Failed to send password reset email to %s: %v", user.Email, err)
+			}
+		}()
 
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
