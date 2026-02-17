@@ -93,25 +93,44 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 		return client.Quit()
 	}
 
-	// Production mode: connect with timeout, then STARTTLS
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
-	if err != nil {
-		return fmt.Errorf("failed to connect to SMTP server: %w", err)
-	}
-	conn.SetDeadline(time.Now().Add(30 * time.Second))
+	tlsConfig := &tls.Config{ServerName: s.smtpHost}
 
-	client, err := smtp.NewClient(conn, s.smtpHost)
-	if err != nil {
-		conn.Close()
-		return fmt.Errorf("failed to create SMTP client: %w", err)
+	var client *smtp.Client
+
+	if s.smtpPort == "465" {
+		// Port 465: implicit TLS (SMTPS) - connect with TLS directly
+		dialer := &net.Dialer{Timeout: 10 * time.Second}
+		tlsConn, err := tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
+		if err != nil {
+			return fmt.Errorf("failed to connect to SMTP server (TLS): %w", err)
+		}
+		tlsConn.SetDeadline(time.Now().Add(30 * time.Second))
+
+		client, err = smtp.NewClient(tlsConn, s.smtpHost)
+		if err != nil {
+			tlsConn.Close()
+			return fmt.Errorf("failed to create SMTP client: %w", err)
+		}
+	} else {
+		// Port 587: STARTTLS - connect plain, then upgrade
+		conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+		if err != nil {
+			return fmt.Errorf("failed to connect to SMTP server: %w", err)
+		}
+		conn.SetDeadline(time.Now().Add(30 * time.Second))
+
+		client, err = smtp.NewClient(conn, s.smtpHost)
+		if err != nil {
+			conn.Close()
+			return fmt.Errorf("failed to create SMTP client: %w", err)
+		}
+
+		if err := client.StartTLS(tlsConfig); err != nil {
+			client.Close()
+			return fmt.Errorf("failed to start TLS: %w", err)
+		}
 	}
 	defer client.Close()
-
-	// STARTTLS
-	tlsConfig := &tls.Config{ServerName: s.smtpHost}
-	if err := client.StartTLS(tlsConfig); err != nil {
-		return fmt.Errorf("failed to start TLS: %w", err)
-	}
 
 	// Authenticate
 	auth := smtp.PlainAuth("", s.smtpUsername, s.smtpPassword, s.smtpHost)
