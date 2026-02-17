@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
-	"log"
 
 	"github.com/P3chys/entoo2-api/internal/models"
 	"github.com/P3chys/entoo2-api/internal/services"
@@ -469,11 +468,29 @@ func ToggleFavoriteDeck(db *gorm.DB) gin.HandlerFunc {
 		isFavorite := false
 		if count > 0 {
 			// Remove favorite
-			db.Exec("DELETE FROM user_favorite_decks WHERE user_id = ? AND flashcard_deck_id = ?", userUUID, deckUUID)
+			if err := db.Exec("DELETE FROM user_favorite_decks WHERE user_id = ? AND flashcard_deck_id = ?", userUUID, deckUUID).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"error": gin.H{
+						"code":    "INTERNAL_ERROR",
+						"message": "Failed to remove favorite",
+					},
+				})
+				return
+			}
 			isFavorite = false
 		} else {
 			// Add favorite
-			db.Exec("INSERT INTO user_favorite_decks (user_id, flashcard_deck_id) VALUES (?, ?)", userUUID, deckUUID)
+			if err := db.Exec("INSERT INTO user_favorite_decks (user_id, flashcard_deck_id) VALUES (?, ?)", userUUID, deckUUID).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"error": gin.H{
+						"code":    "INTERNAL_ERROR",
+						"message": "Failed to add favorite",
+					},
+				})
+				return
+			}
 			isFavorite = true
 		}
 
@@ -1014,9 +1031,7 @@ func ReorderFlashcards(db *gorm.DB) gin.HandlerFunc {
 func StartStudySession(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetString("user_id")
-		log.Printf("[DEBUG] StartStudySession called - userID: %s", userID)
 		if userID == "" {
-			log.Printf("[ERROR] StartStudySession - userID is empty!")
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
 				"error": gin.H{
@@ -1180,7 +1195,7 @@ func ReviewFlashcard(db *gorm.DB) gin.HandlerFunc {
 
 		// Verify session belongs to user
 		var session models.FlashcardStudySession
-		if err := db.First(&session, "id = ? AND user_id = ?", sessionUUID, userID).Error; err != nil {
+		if err := db.First(&session, "id = ? AND user_id = ?", sessionUUID, userUUID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{
 				"success": false,
 				"error": gin.H{
@@ -1248,11 +1263,25 @@ func ReviewFlashcard(db *gorm.DB) gin.HandlerFunc {
 		// Use Create for new records, Save for existing ones
 		if isNewProgress {
 			if err := db.Create(&progress).Error; err != nil {
-				log.Printf("[WARN] Failed to create progress: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"error": gin.H{
+						"code":    "INTERNAL_ERROR",
+						"message": "Failed to save flashcard progress",
+					},
+				})
+				return
 			}
 		} else {
 			if err := db.Save(&progress).Error; err != nil {
-				log.Printf("[WARN] Failed to save progress: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"error": gin.H{
+						"code":    "INTERNAL_ERROR",
+						"message": "Failed to save flashcard progress",
+					},
+				})
+				return
 			}
 		}
 
@@ -1324,7 +1353,19 @@ func CompleteStudySession(db *gorm.DB) gin.HandlerFunc {
 
 		// Verify session belongs to user
 		var session models.FlashcardStudySession
-		if err := db.First(&session, "id = ? AND user_id = ?", sessionUUID, userID).Error; err != nil {
+		userUUID, err := uuid.Parse(userID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "INVALID_USER_ID",
+					"message": "Invalid user ID",
+				},
+			})
+			return
+		}
+
+		if err := db.First(&session, "id = ? AND user_id = ?", sessionUUID, userUUID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{
 				"success": false,
 				"error": gin.H{
@@ -1357,6 +1398,11 @@ func CompleteStudySession(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		var accuracy float64
+		if session.CardsStudied > 0 {
+			accuracy = float64(session.CardsCorrect) / float64(session.CardsStudied) * 100
+		}
+
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"data": gin.H{
@@ -1364,7 +1410,7 @@ func CompleteStudySession(db *gorm.DB) gin.HandlerFunc {
 				"cards_studied":     session.CardsStudied,
 				"cards_correct":     session.CardsCorrect,
 				"duration_seconds":  session.DurationSeconds,
-				"accuracy":          float64(session.CardsCorrect) / float64(session.CardsStudied) * 100,
+				"accuracy":          accuracy,
 			},
 		})
 	}

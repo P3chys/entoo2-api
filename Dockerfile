@@ -23,13 +23,20 @@ FROM alpine:latest
 
 RUN apk --no-cache add ca-certificates
 
-WORKDIR /root/
+# Create non-root user
+RUN adduser -D -u 1001 appuser
+
+WORKDIR /home/appuser
 
 # Copy binary from builder
 COPY --from=builder /app/main .
 
 # Copy email templates
 COPY --from=builder /app/templates ./templates
+
+RUN chown -R appuser:appuser /home/appuser
+
+USER appuser
 
 EXPOSE 8000
 

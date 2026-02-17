@@ -9,10 +9,20 @@ import (
 	"github.com/P3chys/entoo2-api/internal/services"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
+	// Initialize Redis client for token blacklist
+	var rdb *redis.Client
+	opt, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		log.Printf("Warning: Failed to parse Redis URL for token blacklist: %v", err)
+	} else {
+		rdb = redis.NewClient(opt)
+	}
+
 	// Initialize Services
 	storageService, err := services.NewStorageService(cfg)
 	if err != nil {
@@ -80,7 +90,11 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.POST("/login", handlers.Login(db, cfg))
 
 			// Email verification
-			auth.GET("/verify-email/:token", handlers.VerifyEmail(db, cfg))
+			if rateLimiter != nil {
+				auth.GET("/verify-email/:token", rateLimiter.RateLimitByIP(10, 3600), handlers.VerifyEmail(db, cfg))
+			} else {
+				auth.GET("/verify-email/:token", handlers.VerifyEmail(db, cfg))
+			}
 			if rateLimiter != nil {
 				auth.POST("/verify-email/request", rateLimiter.RateLimitByIP(5, 3600), handlers.RequestEmailVerification(db, cfg, emailService))
 			} else {
@@ -95,19 +109,23 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				auth.POST("/password-reset/request", handlers.RequestPasswordReset(db, cfg, emailService))
 				auth.POST("/password-reset/confirm", handlers.ResetPassword(db))
 			}
-			auth.GET("/password-reset/verify/:token", handlers.VerifyResetToken(db))
+			if rateLimiter != nil {
+				auth.GET("/password-reset/verify/:token", rateLimiter.RateLimitByIP(10, 3600), handlers.VerifyResetToken(db))
+			} else {
+				auth.GET("/password-reset/verify/:token", handlers.VerifyResetToken(db))
+			}
 		}
 
 		// Protected routes
 		protected := api.Group("")
-		protected.Use(middleware.AuthRequired(cfg))
+		protected.Use(middleware.AuthRequired(cfg, rdb))
 		if activeUserTracker != nil {
 			protected.Use(activeUserTracker.TrackActiveUsers())
 		}
 		{
 			// Auth
 			protected.GET("/auth/me", handlers.GetCurrentUser(db))
-			protected.POST("/auth/logout", handlers.Logout())
+			protected.POST("/auth/logout", handlers.Logout(cfg, rdb))
 
 			// Semesters
 			protected.GET("/semesters", handlers.ListSemesters(db))
@@ -183,7 +201,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 		// Admin routes
 		admin := api.Group("/admin")
-		admin.Use(middleware.AuthRequired(cfg), middleware.AdminRequired())
+		admin.Use(middleware.AuthRequired(cfg, rdb), middleware.AdminRequired())
 		if activeUserTracker != nil {
 			admin.Use(activeUserTracker.TrackActiveUsers())
 		}

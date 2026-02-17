@@ -3,6 +3,7 @@ package handlers
 import (
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/P3chys/entoo2-api/internal/config"
@@ -12,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -195,8 +197,31 @@ func Login(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 
 		// Generate tokens
-		accessToken, _ := generateToken(user.ID, user.Role, cfg.JWTSecret, cfg.JWTAccessExpiry)
-		refreshToken, _ := generateToken(user.ID, user.Role, cfg.JWTSecret, cfg.JWTRefreshExpiry)
+		accessToken, err := generateToken(user.ID, user.Role, cfg.JWTSecret, cfg.JWTAccessExpiry)
+		if err != nil {
+			log.Printf("Failed to generate access token for user %s: %v", user.ID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "INTERNAL_ERROR",
+					"message": "Nepodařilo se vygenerovat přístupový token",
+				},
+			})
+			return
+		}
+
+		refreshToken, err := generateToken(user.ID, user.Role, cfg.JWTSecret, cfg.JWTRefreshExpiry)
+		if err != nil {
+			log.Printf("Failed to generate refresh token for user %s: %v", user.ID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "INTERNAL_ERROR",
+					"message": "Nepodařilo se vygenerovat obnovovací token",
+				},
+			})
+			return
+		}
 
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
@@ -232,9 +257,29 @@ func GetCurrentUser(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func Logout() gin.HandlerFunc {
+func Logout(cfg *config.Config, rdb *redis.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// In a full implementation, we would add the token to a blacklist in Redis
+		tokenString := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
+		if tokenString == "" {
+			c.JSON(http.StatusNoContent, nil)
+			return
+		}
+
+		// Parse token to get expiry
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			return []byte(cfg.JWTSecret), nil
+		})
+		if err == nil && token.Valid {
+			if claims, ok := token.Claims.(jwt.MapClaims); ok {
+				if exp, ok := claims["exp"].(float64); ok {
+					ttl := time.Until(time.Unix(int64(exp), 0))
+					if ttl > 0 {
+						rdb.Set(c, "blacklist:"+tokenString, "1", ttl)
+					}
+				}
+			}
+		}
+
 		c.JSON(http.StatusNoContent, nil)
 	}
 }
@@ -354,31 +399,21 @@ func VerifyEmail(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// Find user with verification token
-		var users []models.User
-		if err := db.Where("email_verification_token IS NOT NULL").Find(&users).Error; err != nil {
+		// Hash the plain token and query directly by hash
+		hashedToken, err := utils.HashToken(token)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Chyba databáze",
+					"message": "Chyba při zpracování tokenu",
 				},
 			})
 			return
 		}
 
-		// Find matching user by verifying token hash
-		var matchedUser *models.User
-		for i := range users {
-			if users[i].EmailVerificationToken != nil {
-				if utils.VerifyToken(*users[i].EmailVerificationToken, token) {
-					matchedUser = &users[i]
-					break
-				}
-			}
-		}
-
-		if matchedUser == nil {
+		var matchedUser models.User
+		if err := db.Where("email_verification_token = ?", hashedToken).First(&matchedUser).Error; err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
 				"error": gin.H{
@@ -390,7 +425,11 @@ func VerifyEmail(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 
 		// Check token expiry (24 hours)
-		expiry, _ := time.ParseDuration(cfg.EmailVerificationExpiry)
+		expiry, err := time.ParseDuration(cfg.EmailVerificationExpiry)
+		if err != nil {
+			log.Printf("Invalid email verification expiry duration '%s': %v, using default 24h", cfg.EmailVerificationExpiry, err)
+			expiry = 24 * time.Hour
+		}
 		if matchedUser.EmailVerificationSentAt != nil {
 			if time.Since(*matchedUser.EmailVerificationSentAt) > expiry {
 				c.JSON(http.StatusBadRequest, gin.H{
@@ -411,7 +450,7 @@ func VerifyEmail(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		matchedUser.EmailVerificationToken = nil
 		matchedUser.EmailVerificationSentAt = nil
 
-		if err := db.Save(matchedUser).Error; err != nil {
+		if err := db.Save(&matchedUser).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
 				"error": gin.H{
@@ -491,7 +530,11 @@ func RequestPasswordReset(db *gorm.DB, cfg *config.Config, emailService *service
 
 		// Set reset token and expiry
 		now := time.Now()
-		expiry, _ := time.ParseDuration(cfg.PasswordResetExpiry)
+		expiry, err := time.ParseDuration(cfg.PasswordResetExpiry)
+		if err != nil {
+			log.Printf("Invalid password reset expiry duration '%s': %v, using default 1h", cfg.PasswordResetExpiry, err)
+			expiry = 1 * time.Hour
+		}
 		expiresAt := now.Add(expiry)
 
 		user.PasswordResetToken = &hashedToken
@@ -539,31 +582,21 @@ func VerifyResetToken(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Find user with reset token
-		var users []models.User
-		if err := db.Where("password_reset_token IS NOT NULL").Find(&users).Error; err != nil {
+		// Hash the plain token and query directly
+		hashedToken, err := utils.HashToken(token)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Chyba databáze",
+					"message": "Chyba při zpracování tokenu",
 				},
 			})
 			return
 		}
 
-		// Find matching user
-		var matchedUser *models.User
-		for i := range users {
-			if users[i].PasswordResetToken != nil {
-				if utils.VerifyToken(*users[i].PasswordResetToken, token) {
-					matchedUser = &users[i]
-					break
-				}
-			}
-		}
-
-		if matchedUser == nil {
+		var matchedUser models.User
+		if err := db.Where("password_reset_token = ?", hashedToken).First(&matchedUser).Error; err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
 				"error": gin.H{
@@ -619,31 +652,21 @@ func ResetPassword(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Find user with reset token
-		var users []models.User
-		if err := db.Where("password_reset_token IS NOT NULL").Find(&users).Error; err != nil {
+		// Hash the plain token and query directly
+		hashedToken, err := utils.HashToken(req.Token)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
 				"error": gin.H{
 					"code":    "INTERNAL_ERROR",
-					"message": "Chyba databáze",
+					"message": "Chyba při zpracování tokenu",
 				},
 			})
 			return
 		}
 
-		// Find matching user
-		var matchedUser *models.User
-		for i := range users {
-			if users[i].PasswordResetToken != nil {
-				if utils.VerifyToken(*users[i].PasswordResetToken, req.Token) {
-					matchedUser = &users[i]
-					break
-				}
-			}
-		}
-
-		if matchedUser == nil {
+		var matchedUser models.User
+		if err := db.Where("password_reset_token = ?", hashedToken).First(&matchedUser).Error; err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
 				"error": gin.H{
@@ -687,7 +710,7 @@ func ResetPassword(db *gorm.DB) gin.HandlerFunc {
 		matchedUser.PasswordResetSentAt = nil
 		matchedUser.PasswordResetExpiresAt = nil
 
-		if err := db.Save(matchedUser).Error; err != nil {
+		if err := db.Save(&matchedUser).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
 				"error": gin.H{

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/P3chys/entoo2-api/internal/models"
 	"github.com/gin-gonic/gin"
@@ -79,8 +80,18 @@ func GetCommentsBySubject(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+		offset := (page - 1) * limit
+
+		var total int64
+		if err := db.Model(&models.Comment{}).Where("subject_id = ?", subjectID).Count(&total).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count comments"})
+			return
+		}
+
 		var comments []models.Comment
-		if result := db.Where("subject_id = ?", subjectID).Preload("User").Order("created_at desc").Find(&comments); result.Error != nil {
+		if result := db.Where("subject_id = ?", subjectID).Preload("User").Order("created_at desc").Offset(offset).Limit(limit).Find(&comments); result.Error != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch comments"})
 			return
 		}
@@ -93,7 +104,16 @@ func GetCommentsBySubject(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		c.JSON(http.StatusOK, gin.H{"success": true, "data": comments})
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"data":    comments,
+			"pagination": gin.H{
+				"page":        page,
+				"limit":       limit,
+				"total":       total,
+				"total_pages": (total + int64(limit) - 1) / int64(limit),
+			},
+		})
 	}
 }
 

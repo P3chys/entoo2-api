@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"path/filepath"
 
@@ -156,20 +157,25 @@ func CreateAnswer(db *gorm.DB, cfg *config.Config, storage *services.StorageServ
 				return
 			}
 
-			ext := filepath.Ext(header.Filename)
-			newFilename := fmt.Sprintf("%s%s", uuid.New().String(), ext)
-
-			if err := storage.UploadFile(file, newFilename, header.Size, mimeType); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to upload file"})
-				return
-			}
-
+			// Extract text BEFORE uploading (file stream can only be read once)
 			var extractedText string
 			if IsTextExtractable(mimeType) {
 				text, err := tika.ExtractText(file)
 				if err == nil {
 					extractedText = text
 				}
+				// Seek back to beginning for upload
+				if seeker, ok := file.(interface{ Seek(int64, int) (int64, error) }); ok {
+					seeker.Seek(0, 0)
+				}
+			}
+
+			ext := filepath.Ext(header.Filename)
+			newFilename := fmt.Sprintf("%s%s", uuid.New().String(), ext)
+
+			if err := storage.UploadFile(file, newFilename, header.Size, mimeType); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to upload file"})
+				return
 			}
 
 			docID := uuid.New()
@@ -214,7 +220,9 @@ func CreateAnswer(db *gorm.DB, cfg *config.Config, storage *services.StorageServ
 
 			// Index
 			go func() {
-				_ = search.IndexDocument(document)
+				if err := search.IndexDocument(document); err != nil {
+					log.Printf("ERROR: Failed to index document %s attached to answer: %v", document.ID, err)
+				}
 			}()
 
 			documentID = &docID

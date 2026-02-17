@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"strings"
 )
@@ -57,24 +58,24 @@ type Config struct {
 func Load() *Config {
 	return &Config{
 		Port:    getEnv("PORT", "8000"),
-		GinMode: getEnv("GIN_MODE", "debug"),
+		GinMode: getEnv("GIN_MODE", "release"),
 
-		DatabaseURL: getEnv("DATABASE_URL", "postgres://entoo2:entoo2_dev@localhost:5432/entoo2?sslmode=disable"),
+		DatabaseURL: requireEnv("DATABASE_URL"),
 
-		RedisURL: getEnv("REDIS_URL", "redis://:redis_dev@localhost:6379/0"),
+		RedisURL: requireEnv("REDIS_URL"),
 
 		MinIOEndpoint:  getEnv("MINIO_ENDPOINT", "localhost:9000"),
-		MinIOAccessKey: getEnv("MINIO_ACCESS_KEY", "minioadmin"),
-		MinIOSecretKey: getEnv("MINIO_SECRET_KEY", "minioadmin"),
+		MinIOAccessKey: requireEnv("MINIO_ACCESS_KEY"),
+		MinIOSecretKey: requireEnv("MINIO_SECRET_KEY"),
 		MinIOBucket:    getEnv("MINIO_BUCKET", "documents"),
 		MinIOUseSSL:    getEnv("MINIO_USE_SSL", "false") == "true",
 
 		MeiliURL:    getEnv("MEILI_URL", "http://localhost:7700"),
-		MeiliAPIKey: getEnv("MEILI_API_KEY", "dev_master_key_change_in_production"),
+		MeiliAPIKey: requireEnv("MEILI_API_KEY"),
 
 		TikaURL: getEnv("TIKA_URL", "http://localhost:9998"),
 
-		JWTSecret:        getEnv("JWT_SECRET", "development_secret"),
+		JWTSecret:        requireEnv("JWT_SECRET"),
 		JWTAccessExpiry:  getEnv("JWT_ACCESS_EXPIRY", "15m"),
 		JWTRefreshExpiry: getEnv("JWT_REFRESH_EXPIRY", "168h"),
 
@@ -99,4 +100,12 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func requireEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("FATAL: Required environment variable %s is not set", key)
+	}
+	return value
 }

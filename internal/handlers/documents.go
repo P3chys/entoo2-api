@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"fmt"
-
+	"log"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -177,12 +177,16 @@ func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageSe
 
 		// Index in Meilisearch (async)
 		go func() {
-			_ = search.IndexDocument(document)
+			if err := search.IndexDocument(document); err != nil {
+				log.Printf("ERROR: Failed to index document %s: %v", document.ID, err)
+			}
 		}()
 
 		// Create activity
 		go func() {
-			_ = activity.CreateActivity(userUUID, models.ActivityDocumentUploaded, &subjectUUID, &docID, nil)
+			if err := activity.CreateActivity(userUUID, models.ActivityDocumentUploaded, &subjectUUID, &docID, nil); err != nil {
+				log.Printf("ERROR: Failed to create upload activity for document %s: %v", docID, err)
+			}
 		}()
 
 		c.JSON(http.StatusCreated, gin.H{"success": true, "data": document})
@@ -193,7 +197,7 @@ func ListDocuments(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		subjectID := c.Param("id")
 		userIDStr := c.GetString("user_id")
-		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
 		offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 
 		var documents []models.Document
@@ -294,10 +298,8 @@ func DeleteDocument(db *gorm.DB, storage *services.StorageService, search *servi
 			var user models.User
 			if err := db.First(&user, "id = ?", userID).Error; err == nil {
 				if user.Role != models.RoleAdmin {
-					if user.Role != models.RoleAdmin {
-						c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "Not authorized to delete this document"})
-						return
-					}
+					c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "Not authorized to delete this document"})
+					return
 				}
 			}
 		}
@@ -310,13 +312,17 @@ func DeleteDocument(db *gorm.DB, storage *services.StorageService, search *servi
 
 		// Delete from Meilisearch
 		go func() {
-			_ = search.DeleteDocument(document.ID.String())
+			if err := search.DeleteDocument(document.ID.String()); err != nil {
+				log.Printf("ERROR: Failed to delete document %s from search index: %v", document.ID, err)
+			}
 		}()
 
 		// Create activity
 		go func() {
 			userUUID, _ := uuid.Parse(userID)
-			_ = activity.CreateActivity(userUUID, models.ActivityDocumentDeleted, &document.SubjectID, &document.ID, nil)
+			if err := activity.CreateActivity(userUUID, models.ActivityDocumentDeleted, &document.SubjectID, &document.ID, nil); err != nil {
+				log.Printf("ERROR: Failed to create delete activity for document %s: %v", document.ID, err)
+			}
 		}()
 
 		// Delete from DB

@@ -22,15 +22,17 @@ func SeedAdmin(db *gorm.DB) error {
 		return nil
 	}
 
-	// Get admin credentials from environment or use defaults
+	// Get admin credentials from environment — all required
 	adminEmail := os.Getenv("ADMIN_EMAIL")
 	if adminEmail == "" {
-		adminEmail = "admin@entoo2.local"
+		log.Println("ADMIN_EMAIL not set, skipping admin seed")
+		return nil
 	}
 
 	adminPassword := os.Getenv("ADMIN_PASSWORD")
 	if adminPassword == "" {
-		adminPassword = "AdminPassword123!"
+		log.Println("ADMIN_PASSWORD not set, skipping admin seed")
+		return nil
 	}
 
 	adminName := os.Getenv("ADMIN_NAME")

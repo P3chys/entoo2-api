@@ -16,10 +16,15 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func AuthRequired(cfg *config.Config) gin.HandlerFunc {
+// extractToken extracts the Bearer token from the Authorization header
+func extractToken(c *gin.Context) string {
+	authHeader := c.GetHeader("Authorization")
+	return strings.TrimPrefix(authHeader, "Bearer ")
+}
+
+func AuthRequired(cfg *config.Config, rdb ...*redis.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
-		log.Printf("[DEBUG AUTH] Path: %s, AuthHeader: %s", c.Request.URL.Path, authHeader)
 		if authHeader == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
@@ -61,6 +66,21 @@ func AuthRequired(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
+		// Check token blacklist (logout)
+		if len(rdb) > 0 && rdb[0] != nil {
+			if rdb[0].Exists(c, "blacklist:"+tokenString).Val() > 0 {
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"success": false,
+					"error": gin.H{
+						"code":    "UNAUTHORIZED",
+						"message": "Token revoked",
+					},
+				})
+				c.Abort()
+				return
+			}
+		}
+
 		claims, ok := token.Claims.(jwt.MapClaims)
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{
@@ -82,8 +102,20 @@ func AuthRequired(cfg *config.Config) gin.HandlerFunc {
 
 func AdminRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		role, exists := c.Get("role")
-		if !exists || role != string(models.RoleAdmin) {
+		roleInterface, exists := c.Get("role")
+		if !exists {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "FORBIDDEN",
+					"message": "Admin access required",
+				},
+			})
+			c.Abort()
+			return
+		}
+		roleStr, ok := roleInterface.(string)
+		if !ok || roleStr != string(models.RoleAdmin) {
 			c.JSON(http.StatusForbidden, gin.H{
 				"success": false,
 				"error": gin.H{

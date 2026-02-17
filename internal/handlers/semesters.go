@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/P3chys/entoo2-api/internal/models"
 	"github.com/gin-gonic/gin"
@@ -20,11 +21,27 @@ type UpdateSemesterRequest struct {
 	OrderIndex *int    `json:"order_index"`
 }
 
-// ListSemesters returns all semesters ordered by order_index
+// ListSemesters returns all semesters ordered by order_index with pagination
 func ListSemesters(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+		offset := (page - 1) * limit
+
+		var total int64
+		if err := db.Model(&models.Semester{}).Count(&total).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "INTERNAL_ERROR",
+					"message": "Failed to count semesters",
+				},
+			})
+			return
+		}
+
 		var semesters []models.Semester
-		if err := db.Order("order_index asc").Find(&semesters).Error; err != nil {
+		if err := db.Order("order_index asc").Offset(offset).Limit(limit).Find(&semesters).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
 				"error": gin.H{
@@ -38,6 +55,12 @@ func ListSemesters(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"data":    semesters,
+			"pagination": gin.H{
+				"page":        page,
+				"limit":       limit,
+				"total":       total,
+				"total_pages": (total + int64(limit) - 1) / int64(limit),
+			},
 		})
 	}
 }
