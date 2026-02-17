@@ -3,10 +3,13 @@ package services
 import (
 	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net"
+	"net/http"
 	"net/smtp"
 	"path/filepath"
 	"time"
@@ -23,6 +26,7 @@ type EmailService struct {
 	fromName      string
 	appURL        string
 	templatesPath string
+	resendAPIKey  string
 }
 
 type EmailData struct {
@@ -42,11 +46,56 @@ func NewEmailService(cfg *config.Config) *EmailService {
 		fromName:      cfg.SMTPFromName,
 		appURL:        cfg.AppURL,
 		templatesPath: "templates/emails",
+		resendAPIKey:  cfg.ResendAPIKey,
 	}
 }
 
-// SendEmail sends an email using SMTP with STARTTLS and a connection timeout
+// SendEmail sends an email using Resend API (if configured) or SMTP
 func (s *EmailService) SendEmail(to, subject, body string) error {
+	if s.resendAPIKey != "" {
+		return s.sendViaResend(to, subject, body)
+	}
+	return s.sendViaSMTP(to, subject, body)
+}
+
+// sendViaResend sends an email using the Resend HTTP API
+func (s *EmailService) sendViaResend(to, subject, body string) error {
+	payload := map[string]interface{}{
+		"from":    fmt.Sprintf("%s <%s>", s.fromName, s.fromEmail),
+		"to":      []string{to},
+		"subject": subject,
+		"html":    body,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal email payload: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", "https://api.resend.com/emails", bytes.NewReader(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+s.resendAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send email via Resend: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Resend API error (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
+// sendViaSMTP sends an email using SMTP (STARTTLS or implicit TLS)
+func (s *EmailService) sendViaSMTP(to, subject, body string) error {
 	from := fmt.Sprintf("%s <%s>", s.fromName, s.fromEmail)
 	msg := []byte(fmt.Sprintf("From: %s\r\n"+
 		"To: %s\r\n"+

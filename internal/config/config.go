@@ -44,6 +44,9 @@ type Config struct {
 	SMTPFromEmail string
 	SMTPFromName  string
 
+	// Resend (HTTP email API - used when SMTP is blocked)
+	ResendAPIKey string
+
 	// Application URLs
 	AppURL string
 
@@ -85,6 +88,7 @@ func Load() *Config {
 		SMTPPassword:  getEnv("SMTP_PASSWORD", ""),
 		SMTPFromEmail: getEnv("SMTP_FROM_EMAIL", "noreply@localhost"),
 		SMTPFromName:  getEnv("SMTP_FROM_NAME", "Entoo2 Portal"),
+		ResendAPIKey:  getEnv("RESEND_API_KEY", ""),
 
 		AppURL: getEnv("APP_URL", "http://localhost:5173"),
 
