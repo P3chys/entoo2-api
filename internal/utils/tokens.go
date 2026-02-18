@@ -2,9 +2,9 @@ package utils
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
-
-	"golang.org/x/crypto/bcrypt"
+	"encoding/hex"
 )
 
 // GenerateSecureToken generates a cryptographically secure random token
@@ -17,18 +17,10 @@ func GenerateSecureToken(byteLength int) (string, error) {
 	return base64.URLEncoding.EncodeToString(bytes), nil
 }
 
-// HashToken hashes a token using bcrypt for secure storage in the database
+// HashToken hashes a token using SHA-256 for deterministic, lookupable storage.
+// SHA-256 is appropriate here because tokens are high-entropy random values
+// (not user-chosen passwords), so brute-force resistance from bcrypt is unnecessary.
 func HashToken(token string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
-	if err != nil {
-		return "", err
-	}
-	return string(hash), nil
-}
-
-// VerifyToken checks if a plain token matches a bcrypt-hashed token
-// Uses constant-time comparison via bcrypt to prevent timing attacks
-func VerifyToken(hashedToken, plainToken string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hashedToken), []byte(plainToken))
-	return err == nil
+	hash := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(hash[:]), nil
 }
