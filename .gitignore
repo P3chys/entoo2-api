@@ -30,6 +30,7 @@ go.work
 *.swp
 *.swo
 *~
+*.md
 
 # OS files
 .DS_Store
