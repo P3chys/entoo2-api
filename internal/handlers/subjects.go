@@ -352,8 +352,9 @@ func DeleteSubject(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Delete associated teachers first
+		// Delete associated records first
 		db.Where("subject_id = ?", subjectID).Delete(&models.SubjectTeacher{})
+		db.Exec("DELETE FROM user_favorite_subjects WHERE subject_id = ?", subjectID)
 
 		result := db.Delete(&models.Subject{}, "id = ?", subjectID)
 		if result.Error != nil {
