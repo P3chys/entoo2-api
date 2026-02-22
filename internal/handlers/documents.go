@@ -33,6 +33,11 @@ var AllowedMimeTypes = map[string]bool{
 
 func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageService, tika *services.TextExtractionService, search *services.SearchService, activity *services.ActivityService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if storage == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": "Storage service is not available. Please try again later."})
+			return
+		}
+
 		subjectID := c.Param("id")
 		userID := c.GetString("user_id")
 
@@ -234,8 +239,12 @@ func GetDocument(db *gorm.DB) gin.HandlerFunc {
 
 func DownloadDocument(db *gorm.DB, storage *services.StorageService, activity *services.ActivityService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		docID := c.Param("id")
+		if storage == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": "Storage service is not available. Please try again later."})
+			return
+		}
 
+		docID := c.Param("id")
 
 		var document models.Document
 		if err := db.First(&document, "id = ?", docID).Error; err != nil {
@@ -277,6 +286,11 @@ func DownloadDocument(db *gorm.DB, storage *services.StorageService, activity *s
 
 func DeleteDocument(db *gorm.DB, storage *services.StorageService, search *services.SearchService, activity *services.ActivityService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if storage == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": "Storage service is not available. Please try again later."})
+			return
+		}
+
 		docID := c.Param("id")
 		userID := c.GetString("user_id")
 		// Assume user role is available in context if we need to check admin
