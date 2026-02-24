@@ -266,14 +266,18 @@ func DownloadDocument(db *gorm.DB, storage *services.StorageService, activity *s
 			return
 		}
 
-		// Log activity (async)
+		// Log download activity (async)
 		go func() {
-
-			// We define a download activity type if needed, but the model currently only has Uploaded/Deleted.
-			// Assuming we don't strictly need to track downloads in the current required enums, skipping or adding if needed.
-			// The plan says "Create download activity" but the ActivityType enum in models/activity.go only has DocumentUploaded and DocumentDeleted.
-			// I'll skip for now to stick to the defined model, or I could add it. Plan says "1.1 Create Activity Tracking System... Activity Types: document_uploaded, document_deleted".
-			// So I will NOT create a download activity unless I add it to the model.
+			userID := c.GetString("user_id")
+			userUUID, err := uuid.Parse(userID)
+			if err != nil {
+				return
+			}
+			docUUID := document.ID
+			subjectID := document.SubjectID
+			if err := activity.CreateActivity(userUUID, models.ActivityDocumentDownloaded, &subjectID, &docUUID, nil); err != nil {
+				log.Printf("ERROR: Failed to create download activity for document %s: %v", docUUID, err)
+			}
 		}()
 
 		extraHeaders := map[string]string{

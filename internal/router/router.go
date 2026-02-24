@@ -36,6 +36,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	statsService, err := services.NewStatsService(db, cfg)
 	if err != nil {
 		log.Printf("Warning: Failed to initialize stats service: %v. Stats will be unavailable.", err)
+	} else {
+		statsService.StartObservabilityLogger()
 	}
 
 	// Initialize rate limiter

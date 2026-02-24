@@ -10,9 +10,10 @@ import (
 type ActivityType string
 
 const (
-	ActivityDocumentUploaded ActivityType = "document_uploaded"
-	ActivityDocumentDeleted        ActivityType = "document_deleted"
-	ActivityFlashcardDeckCreated   ActivityType = "flashcard_deck_created"
+	ActivityDocumentUploaded        ActivityType = "document_uploaded"
+	ActivityDocumentDownloaded      ActivityType = "document_downloaded"
+	ActivityDocumentDeleted         ActivityType = "document_deleted"
+	ActivityFlashcardDeckCreated    ActivityType = "flashcard_deck_created"
 	ActivityFlashcardStudyCompleted ActivityType = "flashcard_study_completed"
 )
 

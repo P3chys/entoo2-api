@@ -403,6 +403,83 @@ func (s *StatsService) TrackAPIRequest(endpoint string) error {
 	return nil
 }
 
+// DocumentStats24h contains document upload/download counts for the last 24 hours
+type DocumentStats24h struct {
+	Uploaded   int64
+	Downloaded int64
+}
+
+// GetDocumentStats24h queries the activities table for upload and download counts in the last 24h
+func (s *StatsService) GetDocumentStats24h() (*DocumentStats24h, error) {
+	stats := &DocumentStats24h{}
+	cutoff := time.Now().Add(-24 * time.Hour)
+
+	if err := s.db.Model(&models.Activity{}).
+		Where("activity_type = ? AND created_at >= ?", models.ActivityDocumentUploaded, cutoff).
+		Count(&stats.Uploaded).Error; err != nil {
+		return nil, err
+	}
+
+	if err := s.db.Model(&models.Activity{}).
+		Where("activity_type = ? AND created_at >= ?", models.ActivityDocumentDownloaded, cutoff).
+		Count(&stats.Downloaded).Error; err != nil {
+		return nil, err
+	}
+
+	return stats, nil
+}
+
+// StartObservabilityLogger starts a background goroutine that logs app-level stats every 5 minutes
+func (s *StatsService) StartObservabilityLogger() {
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+
+		// Log once on startup
+		s.logStats()
+
+		for range ticker.C {
+			s.logStats()
+		}
+	}()
+	log.Println("[STATS] Observability logger started (interval: 5m)")
+}
+
+func (s *StatsService) logStats() {
+	// Total registered users
+	var totalUsers int64
+	if err := s.db.Model(&models.User{}).Count(&totalUsers).Error; err != nil {
+		log.Printf("[STATS] ERROR: failed to query users: %v", err)
+		return
+	}
+
+	// Active users from Redis
+	ctx := context.Background()
+	now := float64(time.Now().Unix())
+
+	fifteenMinAgo := float64(time.Now().Add(-15 * time.Minute).Unix())
+	activeNow, err := s.redis.ZCount(ctx, "active_users", fmt.Sprintf("%f", fifteenMinAgo), fmt.Sprintf("%f", now)).Result()
+	if err != nil {
+		activeNow = 0
+	}
+
+	oneDayAgo := float64(time.Now().Add(-24 * time.Hour).Unix())
+	activeToday, err := s.redis.ZCount(ctx, "active_users", fmt.Sprintf("%f", oneDayAgo), fmt.Sprintf("%f", now)).Result()
+	if err != nil {
+		activeToday = 0
+	}
+
+	// Document stats
+	docStats, err := s.GetDocumentStats24h()
+	if err != nil {
+		log.Printf("[STATS] ERROR: failed to query document stats: %v", err)
+		return
+	}
+
+	log.Printf("[STATS] Registered users: %d | Active now (15min): %d | Active today (24h): %d | Docs uploaded (24h): %d | Docs downloaded (24h): %d",
+		totalUsers, activeNow, activeToday, docStats.Uploaded, docStats.Downloaded)
+}
+
 // Close closes the Redis connection
 func (s *StatsService) Close() error {
 	return s.redis.Close()
