@@ -34,7 +34,8 @@ COPY --from=builder /app/main .
 # Copy email templates
 COPY --from=builder /app/templates ./templates
 
-RUN chown -R appuser:appuser /home/appuser
+# Pre-create the uploads directory so it's owned by appuser when the volume mounts
+RUN mkdir -p /data/uploads && chown -R appuser:appuser /home/appuser /data
 
 USER appuser
 
