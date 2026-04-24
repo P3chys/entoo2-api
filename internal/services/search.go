@@ -1,259 +1,234 @@
 package services
 
 import (
-	"log"
+	"fmt"
+	"strings"
+	"time"
 
-	"github.com/P3chys/entoo2-api/internal/config"
-	"github.com/P3chys/entoo2-api/internal/models"
-	"github.com/meilisearch/meilisearch-go"
+	"gorm.io/gorm"
 )
 
+// SearchService wraps PostgreSQL full-text search (tsvector / tsquery + pg_trgm).
 type SearchService struct {
-	client *meilisearch.Client
-	index  string
+	db *gorm.DB
 }
 
-func NewSearchService(cfg *config.Config) *SearchService {
-	client := meilisearch.NewClient(meilisearch.ClientConfig{
-		Host:   cfg.MeiliURL,
-		APIKey: cfg.MeiliAPIKey,
-	})
-
-	// Ensure documents index exists (best effort)
-	if _, indexErr := client.GetIndex("documents"); indexErr != nil {
-		if _, createErr := client.CreateIndex(&meilisearch.IndexConfig{
-			Uid:        "documents",
-			PrimaryKey: "id",
-		}); createErr != nil {
-			log.Printf("Failed to create meilisearch documents index: %v", createErr)
-		}
-	}
-
-	// Configure documents index settings
-	docIndex := client.Index("documents")
-
-	// Configure filterable attributes
-	_, err := docIndex.UpdateFilterableAttributes(&[]string{"subject_id", "mime_type", "category"})
-	if err != nil {
-		log.Printf("Failed to update filterable attributes: %v", err)
-	}
-
-	// Configure sortable attributes
-	_, err = docIndex.UpdateSortableAttributes(&[]string{"created_at", "file_size"})
-	if err != nil {
-		log.Printf("Failed to update sortable attributes: %v", err)
-	}
-
-	// Configure searchable attributes with priorities
-	_, err = docIndex.UpdateSearchableAttributes(&[]string{
-		"original_name",  // Highest priority
-		"content_text",   // Second priority
-		"filename",       // Third priority
-	})
-	if err != nil {
-		log.Printf("Failed to update searchable attributes: %v", err)
-	}
-
-	// Configure ranking rules for better relevance
-	_, err = docIndex.UpdateRankingRules(&[]string{
-		"words",           // Number of matched words
-		"typo",            // Typo tolerance
-		"proximity",       // Proximity of matched words
-		"attribute",       // Order of searchable attributes
-		"sort",            // Custom sorting
-		"exactness",       // Exact matches first
-	})
-	if err != nil {
-		log.Printf("Failed to update ranking rules: %v", err)
-	}
-
-	// Typo tolerance is enabled by default in Meilisearch with reasonable settings
-	// Default: 1 typo for words >= 5 chars, 2 typos for words >= 9 chars
-
-	// Ensure subjects index exists (best effort)
-	if _, indexErr := client.GetIndex("subjects"); indexErr != nil {
-		if _, createErr := client.CreateIndex(&meilisearch.IndexConfig{
-			Uid:        "subjects",
-			PrimaryKey: "id",
-		}); createErr != nil {
-			log.Printf("Failed to create meilisearch subjects index: %v", createErr)
-		}
-	}
-
-	// Configure subjects index settings
-	subIndex := client.Index("subjects")
-
-	// Configure filterable attributes for subjects
-	_, err = subIndex.UpdateFilterableAttributes(&[]string{"semester_id", "code"})
-	if err != nil {
-		log.Printf("Failed to update subjects filterable attributes: %v", err)
-	}
-
-	// Configure sortable attributes for subjects
-	_, err = subIndex.UpdateSortableAttributes(&[]string{"name_cs", "created_at", "credits"})
-	if err != nil {
-		log.Printf("Failed to update subjects sortable attributes: %v", err)
-	}
-
-	// Configure searchable attributes for subjects with priorities
-	_, err = subIndex.UpdateSearchableAttributes(&[]string{
-		"code",           // Highest priority (exact course codes)
-		"name_cs",        // Second priority
-		"description_cs", // Third priority
-	})
-	if err != nil {
-		log.Printf("Failed to update subjects searchable attributes: %v", err)
-	}
-
-	// Configure ranking rules for subjects
-	_, err = subIndex.UpdateRankingRules(&[]string{
-		"words",
-		"typo",
-		"proximity",
-		"attribute",
-		"sort",
-		"exactness",
-	})
-	if err != nil {
-		log.Printf("Failed to update subjects ranking rules: %v", err)
-	}
-
-	// Note: Typo tolerance enabled by default for better search experience
-	// Course codes prioritized via searchable attributes ranking
-
-	return &SearchService{
-		client: client,
-		index:  "documents",
-	}
+func NewSearchService(db *gorm.DB) *SearchService {
+	return &SearchService{db: db}
 }
 
-func (s *SearchService) IndexDocument(doc models.Document) error {
-	// Meilisearch accepts a list of documents
-	_, err := s.client.Index(s.index).AddDocuments([]models.Document{doc})
-	return err
+// IndexDocument is a no-op: the content_tsv generated column updates automatically.
+func (s *SearchService) IndexDocument(_ interface{}) error { return nil }
+
+// IndexDocuments is a no-op.
+func (s *SearchService) IndexDocuments(_ interface{}) error { return nil }
+
+// DeleteDocument is a no-op: cascade handles DB deletion.
+func (s *SearchService) DeleteDocument(_ string) error { return nil }
+
+// IndexSubject is a no-op.
+func (s *SearchService) IndexSubject(_ interface{}) error { return nil }
+
+// IndexSubjects is a no-op.
+func (s *SearchService) IndexSubjects(_ interface{}) error { return nil }
+
+// DeleteSubject is a no-op.
+func (s *SearchService) DeleteSubject(_ string) error { return nil }
+
+// GetDocumentCount returns the total number of documents in the DB.
+func (s *SearchService) GetDocumentCount() (int64, error) {
+	var count int64
+	err := s.db.Raw("SELECT COUNT(*) FROM documents").Scan(&count).Error
+	return count, err
 }
 
-func (s *SearchService) DeleteDocument(docID string) error {
-	_, err := s.client.Index(s.index).DeleteDocument(docID)
-	return err
+// pgDocRow is used to scan raw search query results.
+type pgDocRow struct {
+	ID              string    `gorm:"column:id"`
+	SubjectID       string    `gorm:"column:subject_id"`
+	UploadedBy      string    `gorm:"column:uploaded_by"`
+	TypeID          *string   `gorm:"column:type_id"`
+	CategoryID      *string   `gorm:"column:category_id"`
+	Filename        string    `gorm:"column:filename"`
+	OriginalName    string    `gorm:"column:original_name"`
+	FileSize        int64     `gorm:"column:file_size"`
+	MimeType        string    `gorm:"column:mime_type"`
+	FilePath        string    `gorm:"column:file_path"`
+	CreatedAt       time.Time `gorm:"column:created_at"`
+	ContentHeadline string    `gorm:"column:content_headline"`
+	NameHeadline    string    `gorm:"column:name_headline"`
 }
 
-func (s *SearchService) Search(query string, subjectID string, mimeType string, exactMatch bool) (*meilisearch.SearchResponse, error) {
-	request := &meilisearch.SearchRequest{
-		Limit:                    50,
-		AttributesToHighlight:    []string{"content_text", "original_name"},
-		HighlightPreTag:          "<mark>",
-		HighlightPostTag:         "</mark>",
-		AttributesToCrop:         []string{"content_text"},
-		CropLength:               200,
-		ShowMatchesPosition:      true,
+// pgSubjectRow is used to scan raw subject search results.
+type pgSubjectRow struct {
+	ID            string    `gorm:"column:id"`
+	SemesterID    string    `gorm:"column:semester_id"`
+	NameCS        string    `gorm:"column:name_cs"`
+	DescriptionCS string    `gorm:"column:description_cs"`
+	Credits       int       `gorm:"column:credits"`
+	Code          string    `gorm:"column:code"`
+	CreatedAt     time.Time `gorm:"column:created_at"`
+	UpdatedAt     time.Time `gorm:"column:updated_at"`
+	NameHeadline  string    `gorm:"column:name_headline"`
+	DescHeadline  string    `gorm:"column:desc_headline"`
+}
+
+const headlineOpts = "StartSel=<mark>, StopSel=</mark>, MaxFragments=1, MaxWords=50"
+const nameHeadlineOpts = "StartSel=<mark>, StopSel=</mark>"
+
+// searchDocuments runs FTS + trigram fallback on the documents table.
+func (s *SearchService) searchDocuments(query, subjectID, mimeType string, exactMatch bool) ([]map[string]interface{}, int64, error) {
+	q := strings.TrimSpace(query)
+	if q == "" {
+		return nil, 0, nil
 	}
 
-	// Build filter conditions
-	var filters []string
-	if subjectID != "" {
-		filters = append(filters, "subject_id = "+subjectID)
-	}
-	if mimeType != "" {
-		filters = append(filters, "mime_type = "+mimeType)
-	}
-
-	if len(filters) > 0 {
-		filterStr := filters[0]
-		for i := 1; i < len(filters); i++ {
-			filterStr += " AND " + filters[i]
-		}
-		request.Filter = filterStr
-	}
-
-	// Disable fuzzy matching for exact searches
+	tsFunc := "plainto_tsquery"
 	if exactMatch {
-		request.MatchingStrategy = "all"
+		tsFunc = "phraseto_tsquery"
+	}
+	tsq := fmt.Sprintf("%s('simple', ?)", tsFunc)
+
+	sql := fmt.Sprintf(`
+		SELECT
+			d.id, d.subject_id, d.uploaded_by, d.type_id, d.category_id,
+			d.filename, d.original_name, d.file_size, d.mime_type, d.file_path, d.created_at,
+			ts_headline('simple', COALESCE(d.content_text, ''), %s, '%s') AS content_headline,
+			ts_headline('simple', d.original_name,              %s, '%s') AS name_headline
+		FROM documents d
+		WHERE (
+			d.content_tsv @@ %s
+			OR d.original_name ILIKE '%%' || ? || '%%'
+		)
+		AND (? = '' OR d.subject_id::text = ?)
+		AND (? = '' OR d.mime_type = ?)
+		ORDER BY ts_rank_cd(d.content_tsv, %s) DESC
+		LIMIT 50
+	`, tsq, headlineOpts, tsq, nameHeadlineOpts, tsq, tsq)
+
+	// args: tsq×5 for the SELECT headlines + WHERE, then ilike, subjectID×2, mimeType×2, tsq for ORDER BY
+	args := []interface{}{q, q, q, q, subjectID, subjectID, mimeType, mimeType, q}
+
+	var rows []pgDocRow
+	if err := s.db.Raw(sql, args...).Scan(&rows).Error; err != nil {
+		return nil, 0, err
 	}
 
-	return s.client.Index(s.index).Search(query, request)
-}
-
-func (s *SearchService) IndexSubject(subject models.Subject) error {
-	_, err := s.client.Index("subjects").AddDocuments([]models.Subject{subject})
-	return err
-}
-
-func (s *SearchService) IndexSubjects(subjects []models.Subject) error {
-	if len(subjects) == 0 {
-		return nil
-	}
-	_, err := s.client.Index("subjects").AddDocuments(subjects)
-	return err
-}
-
-func (s *SearchService) DeleteSubject(subjectID string) error {
-	_, err := s.client.Index("subjects").DeleteDocument(subjectID)
-	return err
-}
-
-func (s *SearchService) SearchSubjects(query string, semesterID string, exactMatch bool) (*meilisearch.SearchResponse, error) {
-	request := &meilisearch.SearchRequest{
-		Limit:                    100,
-		AttributesToHighlight:    []string{"name_cs", "description_cs", "code"},
-		HighlightPreTag:          "<mark>",
-		HighlightPostTag:         "</mark>",
-		AttributesToCrop:         []string{"description_cs"},
-		CropLength:               200,
-		ShowMatchesPosition:      true,
+	hits := make([]map[string]interface{}, 0, len(rows))
+	for _, r := range rows {
+		formatted := map[string]string{}
+		if r.ContentHeadline != "" {
+			formatted["content_text"] = r.ContentHeadline
+		}
+		if r.NameHeadline != "" {
+			formatted["original_name"] = r.NameHeadline
+		}
+		hit := map[string]interface{}{
+			"id":            r.ID,
+			"subject_id":    r.SubjectID,
+			"uploaded_by":   r.UploadedBy,
+			"type_id":       r.TypeID,
+			"category_id":   r.CategoryID,
+			"filename":      r.Filename,
+			"original_name": r.OriginalName,
+			"file_size":     r.FileSize,
+			"mime_type":     r.MimeType,
+			"file_path":     r.FilePath,
+			"created_at":    r.CreatedAt,
+			"_formatted":    formatted,
+		}
+		hits = append(hits, hit)
 	}
 
-	if semesterID != "" {
-		request.Filter = "semester_id = " + semesterID
+	return hits, int64(len(hits)), nil
+}
+
+// searchSubjects runs FTS + ILIKE fallback on the subjects table.
+func (s *SearchService) searchSubjects(query, _ string, exactMatch bool) ([]map[string]interface{}, int64, error) {
+	q := strings.TrimSpace(query)
+	if q == "" {
+		return nil, 0, nil
 	}
 
-	// Disable fuzzy matching for exact searches
+	tsFunc := "plainto_tsquery"
 	if exactMatch {
-		request.MatchingStrategy = "all"
+		tsFunc = "phraseto_tsquery"
+	}
+	tsq := fmt.Sprintf("%s('simple', ?)", tsFunc)
+
+	sql := fmt.Sprintf(`
+		SELECT
+			s.id, s.semester_id, s.name_cs, s.description_cs, s.credits,
+			COALESCE(s.code, '') as code,
+			s.created_at, s.updated_at,
+			ts_headline('simple', s.name_cs,                        %s, '%s') AS name_headline,
+			ts_headline('simple', COALESCE(s.description_cs, ''),   %s, '%s') AS desc_headline
+		FROM subjects s
+		WHERE
+			to_tsvector('simple', s.name_cs || ' ' || COALESCE(s.description_cs, '')) @@ %s
+			OR s.name_cs ILIKE '%%' || ? || '%%'
+		ORDER BY
+			ts_rank_cd(
+				to_tsvector('simple', s.name_cs || ' ' || COALESCE(s.description_cs, '')),
+				%s
+			) DESC
+		LIMIT 100
+	`, tsq, nameHeadlineOpts, tsq, headlineOpts, tsq, tsq)
+
+	args := []interface{}{q, q, q, q, q}
+
+	var rows []pgSubjectRow
+	if err := s.db.Raw(sql, args...).Scan(&rows).Error; err != nil {
+		return nil, 0, err
 	}
 
-	return s.client.Index("subjects").Search(query, request)
+	hits := make([]map[string]interface{}, 0, len(rows))
+	for _, r := range rows {
+		formatted := map[string]string{}
+		if r.NameHeadline != "" {
+			formatted["name_cs"] = r.NameHeadline
+		}
+		if r.DescHeadline != "" {
+			formatted["description_cs"] = r.DescHeadline
+		}
+		hit := map[string]interface{}{
+			"id":             r.ID,
+			"semester_id":    r.SemesterID,
+			"name_cs":        r.NameCS,
+			"description_cs": r.DescriptionCS,
+			"credits":        r.Credits,
+			"code":           r.Code,
+			"created_at":     r.CreatedAt,
+			"updated_at":     r.UpdatedAt,
+			"_formatted":     formatted,
+		}
+		hits = append(hits, hit)
+	}
+
+	return hits, int64(len(hits)), nil
 }
 
-// SearchAll searches both documents and subjects and combines results
-func (s *SearchService) SearchAll(query string, searchType string, subjectID string, mimeType string, exactMatch bool) (map[string]interface{}, error) {
+// SearchAll searches documents and/or subjects depending on searchType.
+func (s *SearchService) SearchAll(query, searchType, subjectID, mimeType string, exactMatch bool) (map[string]interface{}, error) {
 	result := make(map[string]interface{})
 
-	// Search documents if type is "all" or "documents"
 	if searchType == "" || searchType == "all" || searchType == "documents" {
-		docResults, err := s.Search(query, subjectID, mimeType, exactMatch)
+		docs, count, err := s.searchDocuments(query, subjectID, mimeType, exactMatch)
 		if err != nil {
 			return nil, err
 		}
-		result["documents"] = docResults.Hits
-		result["documents_count"] = docResults.EstimatedTotalHits
+		result["documents"] = docs
+		result["documents_count"] = count
 	}
 
-	// Search subjects if type is "all" or "subjects"
 	if searchType == "" || searchType == "all" || searchType == "subjects" {
-		subjectResults, err := s.SearchSubjects(query, "", exactMatch)
+		subjects, count, err := s.searchSubjects(query, "", exactMatch)
 		if err != nil {
 			return nil, err
 		}
-		result["subjects"] = subjectResults.Hits
-		result["subjects_count"] = subjectResults.EstimatedTotalHits
+		result["subjects"] = subjects
+		result["subjects_count"] = count
 	}
 
 	return result, nil
-}
-
-func (s *SearchService) IndexDocuments(docs []models.Document) error {
-	if len(docs) == 0 {
-		return nil
-	}
-	_, err := s.client.Index(s.index).AddDocuments(docs)
-	return err
-}
-
-func (s *SearchService) GetDocumentCount() (int64, error) {
-	stats, err := s.client.Index(s.index).GetStats()
-	if err != nil {
-		return 0, err
-	}
-	return stats.NumberOfDocuments, nil
 }

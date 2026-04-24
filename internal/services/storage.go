@@ -1,67 +1,61 @@
 package services
 
 import (
-	"context"
+	"fmt"
+	"io"
 	"mime/multipart"
+	"os"
+	"path/filepath"
 
 	"github.com/P3chys/entoo2-api/internal/config"
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 type StorageService struct {
-	client *minio.Client
-	bucket string
+	storagePath string
 }
 
 func NewStorageService(cfg *config.Config) (*StorageService, error) {
-	client, err := minio.New(cfg.MinIOEndpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(cfg.MinIOAccessKey, cfg.MinIOSecretKey, ""),
-		Secure: cfg.MinIOUseSSL,
-	})
+	if err := os.MkdirAll(cfg.StoragePath, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create storage directory %q: %w", cfg.StoragePath, err)
+	}
+	return &StorageService{storagePath: cfg.StoragePath}, nil
+}
+
+func (s *StorageService) UploadFile(file multipart.File, filename string, _ int64, _ string) error {
+	dst, err := os.Create(filepath.Join(s.storagePath, filename))
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to create file: %w", err)
 	}
+	defer dst.Close()
 
-	// Ensure bucket exists
-	ctx := context.Background()
-	exists, err := client.BucketExists(ctx, cfg.MinIOBucket)
+	if _, err := io.Copy(dst, file); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+	return nil
+}
+
+// DownloadFile opens the stored file and returns a ReadCloser and its size.
+func (s *StorageService) DownloadFile(filename string) (io.ReadCloser, int64, error) {
+	path := filepath.Join(s.storagePath, filename)
+	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		err = client.MakeBucket(ctx, cfg.MinIOBucket, minio.MakeBucketOptions{})
-		if err != nil {
-			return nil, err
-		}
+		return nil, 0, fmt.Errorf("file not found: %w", err)
 	}
 
-	return &StorageService{
-		client: client,
-		bucket: cfg.MinIOBucket,
-	}, nil
-}
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, 0, fmt.Errorf("failed to stat file: %w", err)
+	}
 
-func (s *StorageService) UploadFile(file multipart.File, filename string, size int64, contentType string) error {
-	ctx := context.Background()
-	_, err := s.client.PutObject(ctx, s.bucket, filename, file, size, minio.PutObjectOptions{
-		ContentType: contentType,
-	})
-	return err
-}
-
-func (s *StorageService) UploadFileFromPath(ctx context.Context, file interface{}, filename string, size int64, contentType string) (minio.UploadInfo, error) {
-	return s.client.PutObject(ctx, s.bucket, filename, file.(interface{ Read([]byte) (int, error) }), size, minio.PutObjectOptions{
-		ContentType: contentType,
-	})
-}
-
-func (s *StorageService) DownloadFile(filename string) (*minio.Object, error) {
-	ctx := context.Background()
-	return s.client.GetObject(ctx, s.bucket, filename, minio.GetObjectOptions{})
+	return f, info.Size(), nil
 }
 
 func (s *StorageService) DeleteFile(filename string) error {
-	ctx := context.Background()
-	return s.client.RemoveObject(ctx, s.bucket, filename, minio.RemoveObjectOptions{})
+	path := filepath.Join(s.storagePath, filename)
+	err := os.Remove(path)
+	if os.IsNotExist(err) {
+		return nil // already gone, not an error
+	}
+	return err
 }

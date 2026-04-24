@@ -18,7 +18,7 @@ type Document struct {
 	OriginalName string     `gorm:"size:255;not null" json:"original_name"`
 	FileSize     int64      `gorm:"not null" json:"file_size"`
 	MimeType     string     `gorm:"size:100;not null" json:"mime_type"`
-	MinIOPath    string     `gorm:"size:500;not null" json:"minio_path"`
+	FilePath     string     `gorm:"column:file_path;size:500;not null" json:"file_path"`
 	ContentText  string     `gorm:"type:text" json:"content_text,omitempty"`
 	CreatedAt    time.Time  `gorm:"index" json:"created_at"`
 

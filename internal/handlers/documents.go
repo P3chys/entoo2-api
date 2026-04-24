@@ -140,16 +140,16 @@ func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageSe
 		ext := filepath.Ext(header.Filename)
 		newFilename := fmt.Sprintf("%s%s", uuid.New().String(), ext)
 
-		// Upload to MinIO
+		// Upload to storage
 		if err := storage.UploadFile(file, newFilename, header.Size, mimeType); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to upload file"})
 			return
 		}
 
-		// Extract text (async, best effort)
+		// Extract text (best effort)
 		var extractedText string
 		if IsTextExtractable(mimeType) {
-			text, err := tika.ExtractText(file)
+			text, err := tika.ExtractText(file, mimeType)
 			if err == nil {
 				extractedText = text
 			}
@@ -169,22 +169,19 @@ func UploadDocument(db *gorm.DB, cfg *config.Config, storage *services.StorageSe
 			OriginalName: header.Filename,
 			FileSize:     header.Size,
 			MimeType:     mimeType,
-			MinIOPath:    newFilename,
+			FilePath:     newFilename,
 			ContentText:  extractedText,
 		}
 
 		if err := db.Create(&document).Error; err != nil {
-			// Cleanup MinIO
 			_ = storage.DeleteFile(newFilename)
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to save document record"})
 			return
 		}
 
-		// Index in Meilisearch (async)
+		// no-op index call (tsvector maintained by DB)
 		go func() {
-			if err := search.IndexDocument(document); err != nil {
-				log.Printf("ERROR: Failed to index document %s: %v", document.ID, err)
-			}
+			_ = search.IndexDocument(document)
 		}()
 
 		// Create activity
@@ -252,19 +249,12 @@ func DownloadDocument(db *gorm.DB, storage *services.StorageService, activity *s
 			return
 		}
 
-		obj, err := storage.DownloadFile(document.MinIOPath)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to retrieve file"})
-			return
-		}
-		defer obj.Close()
-
-		// Verify object exists and get info
-		stat, err := obj.Stat()
+		rc, fileSize, err := storage.DownloadFile(document.FilePath)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "File not found in storage"})
 			return
 		}
+		defer rc.Close()
 
 		// Log download activity (async)
 		go func() {
@@ -284,7 +274,7 @@ func DownloadDocument(db *gorm.DB, storage *services.StorageService, activity *s
 			"Content-Disposition": fmt.Sprintf("attachment; filename=\"%s\"", document.OriginalName),
 		}
 
-		c.DataFromReader(http.StatusOK, stat.Size, document.MimeType, obj, extraHeaders)
+		c.DataFromReader(http.StatusOK, fileSize, document.MimeType, rc, extraHeaders)
 	}
 }
 
@@ -322,10 +312,8 @@ func DeleteDocument(db *gorm.DB, storage *services.StorageService, search *servi
 			}
 		}
 
-		// Delete from MinIO
-		if err := storage.DeleteFile(document.MinIOPath); err != nil {
-			// Log error but continue
-			fmt.Printf("Failed to delete from MinIO: %v\n", err)
+		if err := storage.DeleteFile(document.FilePath); err != nil {
+			log.Printf("Warning: Failed to delete file from storage: %v", err)
 		}
 
 		// Delete from Meilisearch

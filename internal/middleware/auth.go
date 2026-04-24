@@ -1,37 +1,37 @@
 package middleware
 
 import (
-	"context"
+	"crypto/sha256"
 	"fmt"
-	"log"
 	"net/http"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/P3chys/entoo2-api/internal/config"
 	"github.com/P3chys/entoo2-api/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
 )
 
-// extractToken extracts the Bearer token from the Authorization header
+// extractToken extracts the Bearer token from the Authorization header.
 func extractToken(c *gin.Context) string {
-	authHeader := c.GetHeader("Authorization")
-	return strings.TrimPrefix(authHeader, "Bearer ")
+	return strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
 }
 
-func AuthRequired(cfg *config.Config, rdb ...*redis.Client) gin.HandlerFunc {
+// TokenHash returns the hex-encoded SHA-256 of the raw JWT string.
+// Used as the primary key in the revoked_tokens table.
+func TokenHash(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return fmt.Sprintf("%x", h)
+}
+
+func AuthRequired(cfg *config.Config, db ...*gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
-				"error": gin.H{
-					"code":    "UNAUTHORIZED",
-					"message": "Authorization header required",
-				},
+				"error":   gin.H{"code": "UNAUTHORIZED", "message": "Authorization header required"},
 			})
 			c.Abort()
 			return
@@ -41,10 +41,7 @@ func AuthRequired(cfg *config.Config, rdb ...*redis.Client) gin.HandlerFunc {
 		if tokenString == authHeader {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
-				"error": gin.H{
-					"code":    "UNAUTHORIZED",
-					"message": "Invalid authorization format",
-				},
+				"error":   gin.H{"code": "UNAUTHORIZED", "message": "Invalid authorization format"},
 			})
 			c.Abort()
 			return
@@ -57,24 +54,24 @@ func AuthRequired(cfg *config.Config, rdb ...*redis.Client) gin.HandlerFunc {
 		if err != nil || !token.Valid {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
-				"error": gin.H{
-					"code":    "UNAUTHORIZED",
-					"message": "Invalid or expired token",
-				},
+				"error":   gin.H{"code": "UNAUTHORIZED", "message": "Invalid or expired token"},
 			})
 			c.Abort()
 			return
 		}
 
-		// Check token blacklist (logout)
-		if len(rdb) > 0 && rdb[0] != nil {
-			if rdb[0].Exists(c, "blacklist:"+tokenString).Val() > 0 {
+		// Check token blacklist in DB
+		if len(db) > 0 && db[0] != nil {
+			jti := TokenHash(tokenString)
+			var count int64
+			db[0].Raw(
+				"SELECT COUNT(*) FROM revoked_tokens WHERE jti = ? AND expires_at > NOW()",
+				jti,
+			).Scan(&count)
+			if count > 0 {
 				c.JSON(http.StatusUnauthorized, gin.H{
 					"success": false,
-					"error": gin.H{
-						"code":    "UNAUTHORIZED",
-						"message": "Token revoked",
-					},
+					"error":   gin.H{"code": "UNAUTHORIZED", "message": "Token revoked"},
 				})
 				c.Abort()
 				return
@@ -85,10 +82,7 @@ func AuthRequired(cfg *config.Config, rdb ...*redis.Client) gin.HandlerFunc {
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
-				"error": gin.H{
-					"code":    "UNAUTHORIZED",
-					"message": "Invalid token claims",
-				},
+				"error":   gin.H{"code": "UNAUTHORIZED", "message": "Invalid token claims"},
 			})
 			c.Abort()
 			return
@@ -106,10 +100,7 @@ func AdminRequired() gin.HandlerFunc {
 		if !exists {
 			c.JSON(http.StatusForbidden, gin.H{
 				"success": false,
-				"error": gin.H{
-					"code":    "FORBIDDEN",
-					"message": "Admin access required",
-				},
+				"error":   gin.H{"code": "FORBIDDEN", "message": "Admin access required"},
 			})
 			c.Abort()
 			return
@@ -118,79 +109,11 @@ func AdminRequired() gin.HandlerFunc {
 		if !ok || roleStr != string(models.RoleAdmin) {
 			c.JSON(http.StatusForbidden, gin.H{
 				"success": false,
-				"error": gin.H{
-					"code":    "FORBIDDEN",
-					"message": "Admin access required",
-				},
+				"error":   gin.H{"code": "FORBIDDEN", "message": "Admin access required"},
 			})
 			c.Abort()
 			return
 		}
 		c.Next()
 	}
-}
-
-// ActiveUserTracker tracks active users in Redis
-type ActiveUserTracker struct {
-	redis *redis.Client
-}
-
-// NewActiveUserTracker creates a new active user tracker
-func NewActiveUserTracker(redisURL string) (*ActiveUserTracker, error) {
-	opt, err := redis.ParseURL(redisURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse Redis URL: %w", err)
-	}
-
-	client := redis.NewClient(opt)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := client.Ping(ctx).Err(); err != nil {
-		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
-	}
-
-	return &ActiveUserTracker{redis: client}, nil
-}
-
-// TrackActiveUsers returns a middleware that tracks active users
-func (t *ActiveUserTracker) TrackActiveUsers() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Get user ID from context (set by AuthRequired)
-		userID, exists := c.Get("user_id")
-		if exists && userID != nil {
-			// Track the user asynchronously to not slow down response
-			go t.trackUser(userID.(string))
-		}
-		c.Next()
-	}
-}
-
-func (t *ActiveUserTracker) trackUser(userID string) {
-	ctx := context.Background()
-	timestamp := float64(time.Now().Unix())
-
-	// Add to sorted set with timestamp as score
-	err := t.redis.ZAdd(ctx, "active_users", redis.Z{
-		Score:  timestamp,
-		Member: userID,
-	}).Err()
-
-	if err != nil {
-		log.Printf("ActiveUserTracker: failed to track user: %v", err)
-		return
-	}
-
-	// Clean up old entries (older than 24 hours) - do this periodically
-	// Only clean up 1% of the time to avoid overhead
-	if time.Now().UnixNano()%100 == 0 {
-		oneDayAgo := float64(time.Now().Add(-24 * time.Hour).Unix())
-		t.redis.ZRemRangeByScore(ctx, "active_users", "-inf", strconv.FormatFloat(oneDayAgo, 'f', -1, 64))
-	}
-}
-
-// Close closes the Redis connection
-func (t *ActiveUserTracker) Close() error {
-	return t.redis.Close()
 }

@@ -1,70 +1,89 @@
 package middleware
 
 import (
-	"context"
 	"fmt"
 	"net/http"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 )
 
-// RateLimiter provides rate limiting functionality using Redis
+// RateLimiter provides in-memory fixed-window rate limiting.
+// State is lost on server restart, which is acceptable for this use case.
 type RateLimiter struct {
-	redis *redis.Client
+	windows sync.Map // key(string) → *windowEntry
+	done    chan struct{}
 }
 
-// NewRateLimiter creates a new rate limiter instance
-func NewRateLimiter(redisURL string) (*RateLimiter, error) {
-	opt, err := redis.ParseURL(redisURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse Redis URL: %w", err)
-	}
-
-	client := redis.NewClient(opt)
-
-	// Test connection
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := client.Ping(ctx).Err(); err != nil {
-		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
-	}
-
-	return &RateLimiter{redis: client}, nil
+type windowEntry struct {
+	count   atomic.Int64
+	resetAt time.Time
+	mu      sync.Mutex
 }
 
-// RateLimitByIP creates a middleware that limits requests by IP address
-// maxRequests: maximum number of requests allowed
-// window: time window in seconds (e.g., 3600 for 1 hour)
-func (rl *RateLimiter) RateLimitByIP(maxRequests int, window int) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ip := c.ClientIP()
-		key := fmt.Sprintf("rate_limit:ip:%s:%s", c.FullPath(), ip)
+// NewRateLimiter creates a rate limiter and starts a background cleanup goroutine.
+func NewRateLimiter() *RateLimiter {
+	rl := &RateLimiter{done: make(chan struct{})}
+	go rl.gcWorker()
+	return rl
+}
 
-		ctx := context.Background()
-
-		// Increment counter
-		count, err := rl.redis.Incr(ctx, key).Result()
-		if err != nil {
-			// If Redis fails, allow the request but log the error
-			_ = c.Error(fmt.Errorf("rate limiter error: %w", err))
-			c.Next()
+// gcWorker periodically removes expired window entries to prevent unbounded growth.
+func (rl *RateLimiter) gcWorker() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			now := time.Now()
+			rl.windows.Range(func(k, v interface{}) bool {
+				if e, ok := v.(*windowEntry); ok {
+					e.mu.Lock()
+					expired := now.After(e.resetAt)
+					e.mu.Unlock()
+					if expired {
+						rl.windows.Delete(k)
+					}
+				}
+				return true
+			})
+		case <-rl.done:
 			return
 		}
+	}
+}
 
-		// Set expiry on first request
-		if count == 1 {
-			rl.redis.Expire(ctx, key, time.Duration(window)*time.Second)
-		}
+func (rl *RateLimiter) getEntry(key string, window time.Duration) *windowEntry {
+	now := time.Now()
+	v, _ := rl.windows.LoadOrStore(key, &windowEntry{resetAt: now.Add(window)})
+	e := v.(*windowEntry)
 
-		// Check if limit exceeded
+	e.mu.Lock()
+	if now.After(e.resetAt) {
+		e.count.Store(0)
+		e.resetAt = now.Add(window)
+	}
+	e.mu.Unlock()
+
+	return e
+}
+
+// RateLimitByIP limits requests per client IP + route path.
+func (rl *RateLimiter) RateLimitByIP(maxRequests int, windowSecs int) gin.HandlerFunc {
+	window := time.Duration(windowSecs) * time.Second
+	return func(c *gin.Context) {
+		key := fmt.Sprintf("ip:%s:%s", c.FullPath(), c.ClientIP())
+		e := rl.getEntry(key, window)
+		count := e.count.Add(1)
+
 		if count > int64(maxRequests) {
-			// Get TTL for Retry-After header
-			ttl, _ := rl.redis.TTL(ctx, key).Result()
+			e.mu.Lock()
+			retryAfter := int(time.Until(e.resetAt).Seconds())
+			e.mu.Unlock()
 
-			c.Header("Retry-After", fmt.Sprintf("%d", int(ttl.Seconds())))
+			c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
 			c.JSON(http.StatusTooManyRequests, gin.H{
 				"success": false,
 				"error": gin.H{
@@ -76,27 +95,21 @@ func (rl *RateLimiter) RateLimitByIP(maxRequests int, window int) gin.HandlerFun
 			return
 		}
 
-		// Add rate limit headers
 		c.Header("X-RateLimit-Limit", fmt.Sprintf("%d", maxRequests))
 		c.Header("X-RateLimit-Remaining", fmt.Sprintf("%d", maxRequests-int(count)))
-
 		c.Next()
 	}
 }
 
-// RateLimitByEmail creates a middleware that limits requests by email address
-// This is useful for preventing spam to specific email addresses
-func (rl *RateLimiter) RateLimitByEmail(maxRequests int, window int, emailField string) gin.HandlerFunc {
+// RateLimitByEmail limits requests per email address + route path.
+func (rl *RateLimiter) RateLimitByEmail(maxRequests int, windowSecs int, emailField string) gin.HandlerFunc {
+	window := time.Duration(windowSecs) * time.Second
 	return func(c *gin.Context) {
-		// Parse request body to get email
 		var body map[string]interface{}
 		if err := c.ShouldBindJSON(&body); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
-				"error": gin.H{
-					"code":    "VALIDATION_ERROR",
-					"message": err.Error(),
-				},
+				"error":   gin.H{"code": "VALIDATION_ERROR", "message": err.Error()},
 			})
 			c.Abort()
 			return
@@ -106,42 +119,24 @@ func (rl *RateLimiter) RateLimitByEmail(maxRequests int, window int, emailField 
 		if !ok || email == "" {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
-				"error": gin.H{
-					"code":    "VALIDATION_ERROR",
-					"message": "Email is required",
-				},
+				"error":   gin.H{"code": "VALIDATION_ERROR", "message": "Email is required"},
 			})
 			c.Abort()
 			return
 		}
 
-		// Set email in context for use by handler
 		c.Set("rate_limit_email", email)
 
-		key := fmt.Sprintf("rate_limit:email:%s:%s", c.FullPath(), email)
+		key := fmt.Sprintf("email:%s:%s", c.FullPath(), email)
+		e := rl.getEntry(key, window)
+		count := e.count.Add(1)
 
-		ctx := context.Background()
-
-		// Increment counter
-		count, err := rl.redis.Incr(ctx, key).Result()
-		if err != nil {
-			// If Redis fails, allow the request but log the error
-			_ = c.Error(fmt.Errorf("rate limiter error: %w", err))
-			c.Next()
-			return
-		}
-
-		// Set expiry on first request
-		if count == 1 {
-			rl.redis.Expire(ctx, key, time.Duration(window)*time.Second)
-		}
-
-		// Check if limit exceeded
 		if count > int64(maxRequests) {
-			// Get TTL for Retry-After header
-			ttl, _ := rl.redis.TTL(ctx, key).Result()
+			e.mu.Lock()
+			retryAfter := int(time.Until(e.resetAt).Seconds())
+			e.mu.Unlock()
 
-			c.Header("Retry-After", fmt.Sprintf("%d", int(ttl.Seconds())))
+			c.Header("Retry-After", fmt.Sprintf("%d", retryAfter))
 			c.JSON(http.StatusTooManyRequests, gin.H{
 				"success": false,
 				"error": gin.H{
@@ -155,9 +150,4 @@ func (rl *RateLimiter) RateLimitByEmail(maxRequests int, window int, emailField 
 
 		c.Next()
 	}
-}
-
-// Close closes the Redis connection
-func (rl *RateLimiter) Close() error {
-	return rl.redis.Close()
 }

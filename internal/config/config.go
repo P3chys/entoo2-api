@@ -14,22 +14,8 @@ type Config struct {
 	// Database
 	DatabaseURL string
 
-	// Redis
-	RedisURL string
-
-	// MinIO
-	MinIOEndpoint  string
-	MinIOAccessKey string
-	MinIOSecretKey string
-	MinIOBucket    string
-	MinIOUseSSL    bool
-
-	// Meilisearch
-	MeiliURL    string
-	MeiliAPIKey string
-
-	// Tika
-	TikaURL string
+	// File Storage (local filesystem / Railway volume)
+	StoragePath string
 
 	// JWT
 	JWTSecret        string
@@ -65,18 +51,7 @@ func Load() *Config {
 
 		DatabaseURL: requireEnv("DATABASE_URL"),
 
-		RedisURL: requireEnv("REDIS_URL"),
-
-		MinIOEndpoint:  getEnv("MINIO_ENDPOINT", "localhost:9000"),
-		MinIOAccessKey: requireEnv("MINIO_ACCESS_KEY"),
-		MinIOSecretKey: requireEnv("MINIO_SECRET_KEY"),
-		MinIOBucket:    getEnv("MINIO_BUCKET", "documents"),
-		MinIOUseSSL:    getEnv("MINIO_USE_SSL", "false") == "true",
-
-		MeiliURL:    getEnv("MEILI_URL", "http://localhost:7700"),
-		MeiliAPIKey: requireEnv("MEILI_API_KEY"),
-
-		TikaURL: getEnv("TIKA_URL", "http://localhost:9998"),
+		StoragePath: getEnv("STORAGE_PATH", "/data/uploads"),
 
 		JWTSecret:        requireEnv("JWT_SECRET"),
 		JWTAccessExpiry:  getEnv("JWT_ACCESS_EXPIRY", "15m"),

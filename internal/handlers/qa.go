@@ -160,7 +160,7 @@ func CreateAnswer(db *gorm.DB, cfg *config.Config, storage *services.StorageServ
 			// Extract text BEFORE uploading (file stream can only be read once)
 			var extractedText string
 			if IsTextExtractable(mimeType) {
-				text, err := tika.ExtractText(file)
+				text, err := tika.ExtractText(file, mimeType)
 				if err == nil {
 					extractedText = text
 				}
@@ -206,7 +206,7 @@ func CreateAnswer(db *gorm.DB, cfg *config.Config, storage *services.StorageServ
 				OriginalName: header.Filename,
 				FileSize:     header.Size,
 				MimeType:     mimeType,
-				MinIOPath:    newFilename,
+				FilePath:     newFilename,
 				ContentText:  extractedText,
 				// AnswerID will be set after creating Answer? Or we set it here if we had the Answer ID.
 				// Circular diff. Let's create doc first.

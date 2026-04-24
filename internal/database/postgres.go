@@ -93,7 +93,7 @@ func RunMigrations(db *gorm.DB) error {
 		OriginalName string    `gorm:"size:255;not null"`
 		FileSize     int64     `gorm:"not null"`
 		MimeType     string    `gorm:"size:100;not null"`
-		MinIOPath    string    `gorm:"size:500;not null"`
+		FilePath     string    `gorm:"column:file_path;size:500;not null"`
 		ContentText  string    `gorm:"type:text"`
 		CreatedAt    time.Time `gorm:"index"`
 	}
@@ -316,6 +316,60 @@ func RunMigrations(db *gorm.DB) error {
 	`).Error; err != nil {
 		log.Printf("Warning: Failed to create user_favorite_decks table: %v", err)
 	}
+
+	// ---- pg-only additions ----
+
+	// pg_trgm for fuzzy / ILIKE trigram search
+	db.Exec(`CREATE EXTENSION IF NOT EXISTS pg_trgm`)
+
+	// Token blacklist (replaces Redis)
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS revoked_tokens (
+			jti        TEXT PRIMARY KEY,
+			expires_at TIMESTAMPTZ NOT NULL
+		)
+	`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires ON revoked_tokens(expires_at)`)
+
+	// API analytics (replaces Redis counters)
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS api_requests (
+			id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+			endpoint   VARCHAR(255) NOT NULL,
+			method     VARCHAR(10)  NOT NULL,
+			created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+		)
+	`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_api_requests_created  ON api_requests(created_at DESC)`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_api_requests_endpoint ON api_requests(endpoint)`)
+
+	// Rename minio_path → file_path on existing deployments
+	db.Exec(`
+		DO $$
+		BEGIN
+			IF EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'documents' AND column_name = 'minio_path'
+			) THEN
+				ALTER TABLE documents RENAME COLUMN minio_path TO file_path;
+			END IF;
+		END $$
+	`)
+
+	// FTS index on documents (content_tsv generated column + GIN index)
+	db.Exec(`
+		ALTER TABLE documents
+		ADD COLUMN IF NOT EXISTS content_tsv TSVECTOR
+		GENERATED ALWAYS AS (
+			to_tsvector('simple',
+				COALESCE(content_text, '') || ' ' || COALESCE(original_name, ''))
+		) STORED
+	`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_documents_fts      ON documents USING GIN(content_tsv)`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_documents_name_trgm ON documents USING GIN(original_name gin_trgm_ops)`)
+
+	// Trigram indexes on subjects for fuzzy name search
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_subjects_name_trgm ON subjects USING GIN(name_cs gin_trgm_ops)`)
 
 	log.Println("Migrations completed successfully")
 	return nil

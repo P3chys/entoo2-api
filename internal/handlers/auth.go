@@ -11,9 +11,9 @@ import (
 	"github.com/P3chys/entoo2-api/internal/services"
 	"github.com/P3chys/entoo2-api/internal/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/P3chys/entoo2-api/internal/middleware"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -258,7 +258,7 @@ func GetCurrentUser(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func Logout(cfg *config.Config, rdb *redis.Client) gin.HandlerFunc {
+func Logout(cfg *config.Config, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
 		if tokenString == "" {
@@ -266,16 +266,20 @@ func Logout(cfg *config.Config, rdb *redis.Client) gin.HandlerFunc {
 			return
 		}
 
-		// Parse token to get expiry
+		// Parse token to get expiry, then insert into revoked_tokens
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			return []byte(cfg.JWTSecret), nil
 		})
 		if err == nil && token.Valid {
 			if claims, ok := token.Claims.(jwt.MapClaims); ok {
 				if exp, ok := claims["exp"].(float64); ok {
-					ttl := time.Until(time.Unix(int64(exp), 0))
-					if ttl > 0 {
-						rdb.Set(c, "blacklist:"+tokenString, "1", ttl)
+					expiresAt := time.Unix(int64(exp), 0)
+					if time.Until(expiresAt) > 0 {
+						jti := middleware.TokenHash(tokenString)
+						db.Exec(
+							"INSERT INTO revoked_tokens (jti, expires_at) VALUES (?, ?) ON CONFLICT DO NOTHING",
+							jti, expiresAt,
+						)
 					}
 				}
 			}

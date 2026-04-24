@@ -346,7 +346,7 @@ func uploadSubjectFiles(db *gorm.DB, storage *services.StorageService, subjectDi
 			OriginalName: relPath,
 			FileSize:     fileInfo.Size(),
 			MimeType:     mimeType,
-			MinIOPath:    filename,
+			FilePath:     filename,
 		}
 
 		if err := db.Create(&document).Error; err != nil {
