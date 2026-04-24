@@ -34,10 +34,13 @@ COPY --from=builder /app/main .
 # Copy email templates
 COPY --from=builder /app/templates ./templates
 
-RUN mkdir -p /home/appuser/uploads && chown -R appuser:appuser /home/appuser
+# Entrypoint: fix ownership of the volume mount point (runs as root), then exec app as appuser
+COPY --from=builder /bin/sh /bin/sh
+RUN printf '#!/bin/sh\nmkdir -p "${STORAGE_PATH:-/home/appuser/uploads}"\nchown appuser:appuser "${STORAGE_PATH:-/home/appuser/uploads}"\nexec su-exec appuser ./main\n' > /entrypoint.sh && \
+    chmod +x /entrypoint.sh
 
-USER appuser
+RUN apk --no-cache add su-exec && chown appuser:appuser /home/appuser
 
 EXPOSE 8000
 
-CMD ["./main"]
+CMD ["/entrypoint.sh"]
