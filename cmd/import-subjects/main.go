@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io/fs"
 	"log"
@@ -61,9 +60,9 @@ func main() {
 		log.Fatalf("Failed to initialize storage service: %v", err)
 	}
 
-	// Initialize search service
-	searchService := services.NewSearchService(cfg)
-	log.Println("Meilisearch service initialized")
+	// Initialize search service (no-op with pg-only stack)
+	searchService := services.NewSearchService(db)
+	log.Println("Search service initialized (PostgreSQL FTS)")
 
 	// Import subjects from directory
 	// Try Linux path first (for Docker), then Windows path
@@ -329,10 +328,8 @@ func uploadSubjectFiles(db *gorm.DB, storage *services.StorageService, subjectDi
 			mimeType = "application/octet-stream"
 		}
 
-		// Upload to MinIO
-		ctx := context.Background()
-		_, err = storage.UploadFileFromPath(ctx, file, filename, fileInfo.Size(), mimeType)
-		if err != nil {
+		// Upload to filesystem storage
+		if err := storage.UploadFile(file, filename, fileInfo.Size(), mimeType); err != nil {
 			log.Printf("    Failed to upload file %s: %v", relPath, err)
 			return nil
 		}
